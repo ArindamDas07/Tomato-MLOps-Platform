@@ -1,0 +1,30 @@
+# --- Environments ---
+# Your specific conda env
+tomato_env/
+# Standard names just in case
+venv/
+.venv/
+env/
+.conda/
+
+# --- Python Junk ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Secrets & Config ---
+.env
+.flaskenv
+
+# --- Project Specific ---
+# This is where images are saved; we never want these on GitHub
+uploads/
+
+# --- OS & IDEs ---
+.DS_Store
+.vscode/
+.idea/
+*.swp

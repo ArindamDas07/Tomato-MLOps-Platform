@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  # --- Tomato API Replicas ---
+  # This tells Prometheus: "Don't just look for one 'api' container. 
+  # Ask the network for ALL containers named 'api' and scrape every single one."
+  - job_name: "tomato_api"
+    metrics_path: /metrics
+    dns_sd_configs:
+      - names:
+          - 'api'
+        type: 'A'
+        port: 8000
+
+  # ---------------- Pushgateway (Central Hub) ----------------
+  # We only have ONE Pushgateway, but it collects data from ANY number 
+  # of workers. honor_labels ensures we see each worker separately.
+  - job_name: "tomato_pushgateway"
+    honor_labels: true  
+    static_configs:
+      - targets: ["pushgateway:9091"]
+
+  # ---------------- Redis (Monitoring) ----------------
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis_exporter:9121"]
+
+  # ---------------- Prometheus (Self) ----------------
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]

@@ -1,0 +1,99 @@
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background-color: #f1f5f9;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.container {
+    width: 100%;
+    max-width: 450px;
+    background: white;
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+.preview-container {
+    width: 280px;
+    height: 280px;
+    margin: 0 auto 20px;
+    border-radius: 15px;
+    background: #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 2px dashed #cbd5e1;
+}
+
+#preview-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+.button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+button {
+    padding: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+}
+
+#upload-btn { background-color: #3b82f6; color: white; }
+#upload-btn:hover { background-color: #2563eb; }
+
+/* The Predict Button Style */
+#predict-btn { 
+    background-color: #10b981; 
+    color: white; 
+}
+#predict-btn:hover:not(:disabled) { background-color: #059669; }
+
+/* Disabled state - Grayed out and no pointer */
+#predict-btn:disabled {
+    background-color: #cbd5e1;
+    color: #94a3b8;
+    cursor: not-allowed;
+    transform: none;
+}
+
+#status {
+    margin: 15px 0;
+    font-size: 14px;
+    color: #475569;
+    font-style: italic;
+}
+
+.result-card {
+    background-color: #ecfdf5;
+    border: 1px solid #10b981;
+    padding: 15px;
+    border-radius: 12px;
+    margin-top: 15px;
+}
+
+.error-card {
+    background-color: #fef2f2;
+    border: 1px solid #ef4444;
+    color: #b91c1c;
+    padding: 15px;
+    border-radius: 12px;
+    margin-top: 15px;
+}
+
+.meta { font-size: 11px; color: #64748b; margin-top: 10px; }

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tomato AI - Production Grade</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+    <h1>🍅 Tomato Leaf AI</h1>
+    <p class="subtitle">Upload and Validate leaf images in real-time</p>
+
+    <!-- Hidden input for file selection -->
+    <input type="file" id="image-input" accept="image/*" hidden>
+
+    <div class="preview-container">
+        <img id="preview-image" alt="Preview">
+        <div id="placeholder-text">No image selected</div>
+    </div>
+
+    <div class="button-group">
+        <button id="upload-btn">Upload New Image</button>
+        <!-- Disabled by default, enabled only after Gatekeeper pass -->
+        <button id="predict-btn" disabled>Predict Disease</button>
+    </div>
+
+    <div id="status-spinner" class="spinner" style="display: none;"></div>
+    <div id="status">Ready to upload</div>
+
+    <div id="result-box" class="result-card" style="display: none;">
+        <h2>Inference Result</h2>
+        <p><strong>Disease:</strong> <span id="disease"></span></p>
+        <p><strong>Confidence:</strong> <span id="confidence"></span>%</p>
+        <p class="meta">Processed by: <span id="model-used"></span></p>
+    </div>
+
+    <div id="error-box" class="error-card" style="display: none;"></div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

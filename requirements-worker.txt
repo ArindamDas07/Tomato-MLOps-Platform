@@ -1,0 +1,16 @@
+# --- Infrastructure & Tasks ---
+celery==5.3.6
+redis==5.0.1
+python-dotenv==1.0.0
+loguru==0.7.2
+
+# --- Monitoring & Drift ---
+mlflow==2.12.1
+prometheus-client==0.20.0
+
+# --- Deep Learning Stack ---
+tensorflow-cpu==2.14.0
+numpy==1.26.4
+pillow==10.4.0
+scipy==1.11.4
+python-multipart==0.0.9
