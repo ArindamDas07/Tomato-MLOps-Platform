@@ -1,47 +1,21 @@
-# 1. BASE IMAGE SELECTION
-# Python-slim provides a lightweight Linux environment while maintaining compatibility
-# with the complex binary dependencies of TensorFlow and NumPy.
 FROM python:3.10-slim
 
-# 2. RUNTIME ENVIRONMENT CONFIGURATION
-# PYTHONDONTWRITEBYTECODE: Disables .pyc file generation to keep the container filesystem lean.
-# PYTHONUNBUFFERED: Ensures that model loading logs and task progress are streamed 
-# directly to the Docker logs without delay.
-# PYTHONPATH: Critically important here so the worker can import the shared 'app' 
-# module (e.g., Redis connection, custom utilities).
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
-
 WORKDIR /app
 
-# 3. BUILD-TIME OPTIMIZATION
-RUN pip install --no-cache-dir --upgrade pip
+# Step A: Copy requirements from the ROOT
+COPY requirements-worker.txt .
 
-# 4. HEAVY DEPENDENCY MANAGEMENT
-# We use requirements-worker.txt which contains the full ML stack (TensorFlow-CPU).
-# Layer Caching: We install these 1.5GB+ dependencies in their own layer to ensure 
-# that code changes in 'worker.py' don't trigger a re-download of the ML stack.
-COPY requirements-worker.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Step B: Install heavy AI libraries
+RUN pip install --no-cache-dir -r requirements-worker.txt
 
-# 5. CONTEXTUAL COPYING (The Intelligence Layer)
-# Unlike the API, the worker requires the 'models/' folder containing the .h5 weights
-# and the 'worker/' folder containing the task orchestration logic.
-COPY ./app ./app
+# Step C: Copy the worker code AND the models folder
 COPY ./worker ./worker
-COPY ./models ./models  
+COPY ./models ./models
 
-# 6. SHARED STAGING INITIALIZATION
-# Creates the internal mounting point for the Docker Volume. 
-# This is where the worker 'picks up' the images saved by the API.
+# Step D: Create shared storage
 RUN mkdir -p uploads && chmod 755 uploads
 
-# 7. EXECUTION LAYER (Horizontal Scaling Logic)
-# -A worker.celery_app: Points to our centralized Celery configuration.
-# --loglevel=info: Provides visibility into model loading and task status.
-# -c 1 (CONCURRENCY 1): THE SENIOR MOVE.
-# Since each model instance (ResNet/EffNet) consumes ~500MB-1GB of RAM, we limit 
-# each worker container to one active process. This ensures predictable resource 
-# usage and prevents 'Out of Memory' crashes during high-concurrency spikes.
+# Step E: Run Celery
+# We use worker.celery_app because it is inside the worker folder
 CMD ["celery", "-A", "worker.celery_app", "worker", "--loglevel=info", "-c", "1"]

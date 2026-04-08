@@ -1,38 +1,23 @@
-# 1. BASE IMAGE SELECTION
-# Using 'slim' variant to minimize the attack surface and reduce image pull latency.
 FROM python:3.10-slim
 
-# 2. RUNTIME ENVIRONMENT CONFIGURATION
-# PYTHONDONTWRITEBYTECODE: Prevents Python from writing .pyc files to disk (disk-space optimization)
-# PYTHONUNBUFFERED: Forces real-time log output (crucial for container observability)
-# PYTHONPATH: Ensures the 'app' module is discoverable by the ASGI server
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# This tells Python where to look for your code
 ENV PYTHONPATH=/app
-
 WORKDIR /app
 
-# 3. BUILD-TIME DEPENDENCY MANAGEMENT
-# Upgrading pip first to ensure support for modern wheel distributions.
-RUN pip install --no-cache-dir --upgrade pip
+# Step A: Copy requirements from the ROOT into the container
+# Even though this Dockerfile is in the 'api' folder, 
+# Docker will find this file in the root during the build.
+COPY requirements-api.txt .
 
-# LEAN DEPENDENCY STRATEGY:
-# We install ONLY the web gateway requirements. 
-# Heavy ML libraries (TensorFlow/Torch) are intentionally excluded to keep this image lightweight.
-COPY requirements-api.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Step B: Install the libraries
+RUN pip install --no-cache-dir -r requirements-api.txt
 
-# 4. DECOUPLED CONTEXT COPYING
-# Principle of Least Privilege: We copy only the folders required for the gateway layer.
-# The 'models/' and 'worker/' directories are ignored to maintain image purity.
-COPY ./app ./app
-COPY ./frontend ./frontend
+# Step C: Copy the 'api' folder from your computer into the container
+COPY ./api ./api
 
-# 5. INFRASTRUCTURE INITIALIZATION
-# Creating the persistent staging directory for high-resolution image uploads.
-# chmod 755 ensures the application can write in wb mode while restricting global access.
+# Step D: Create the shared storage folder
 RUN mkdir -p uploads && chmod 755 uploads
 
-# 6. INGRESS CONFIGURATION
-# Launching Uvicorn on 0.0.0.0 to enable internal Docker network routing from the Nginx proxy.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Step E: Start the app
+# We use api.main:app because main.py is inside the api folder
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

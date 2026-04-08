@@ -1,16 +1,19 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 import aiofiles
 from loguru import logger
 import uuid
 import shutil
 from pathlib import Path
-from fastapi.staticfiles import StaticFiles
-from app.redis_conn import redis_client
 from celery import Celery
 from dotenv import load_dotenv
 import os
+
+# --- NEW: Import fixed for the api/ folder structure ---
+from api.redis_conn import redis_client 
 
 load_dotenv()
 
@@ -18,13 +21,19 @@ load_dotenv()
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")
 REDIS_DB_TASKS = os.getenv("REDIS_DB_TASKS", "0")
-UPLOAD_DIR = Path('uploads')
+
+# --- NEW: Standardized Path Setup ---
+BASE_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR = Path("/app/uploads") # Professional K8s shared volume path
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 # -------------------- Initialization --------------------
 app = FastAPI(title="Tomato MLOps Gateway")
+
+# Prometheus Metrics
 Instrumentator().instrument(app).expose(app)
 
+# Celery Initialization
 celery_app = Celery("tomato_app", broker=f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_TASKS}")
 
 app.add_middleware(
@@ -34,6 +43,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- NEW: Mounting Frontend properly ---
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+@app.get("/")
+async def read_index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 # --- STEP 1: UPLOAD ---
 @app.post('/upload')
@@ -52,17 +69,16 @@ async def upload_image(file: UploadFile = File(...)):
         async with aiofiles.open(file_path, 'wb') as f:
             await f.write(content)
         
-        # PRO MOVE: Wrap task triggering in a try-except to catch Redis connection issues
+        # Pointing to the task inside the worker folder
         task = celery_app.send_task("worker.gatekeeper", args=[user_id, str(file_path)])
         
         logger.info(f"User {user_id} | Upload successful | TaskID: {task.id}")
         return {"user_id": user_id, "task_id": task.id}
 
     except Exception as e:
-        # PRO MOVE: If anything fails during upload, clean up the folder immediately
         if user_folder.exists():
             shutil.rmtree(user_folder)
-        logger.exception(f"Upload failed for user {user_id}") # Note the .exception()
+        logger.exception(f"Upload failed for user {user_id}")
         raise HTTPException(status_code=500, detail="Failed to process upload")
 
 # --- STEP 2: GATEKEEPER POLLING ---
@@ -74,7 +90,6 @@ async def check_leaf(user_id: str, task_id: str):
             if result == "tomato":
                 return {"status": "done", "valid": True}
             else:
-                # PRO MOVE: Use a utility for cleanup to keep route clean
                 if (UPLOAD_DIR / user_id).exists():
                     shutil.rmtree(UPLOAD_DIR / user_id)
                 return {"status": "done", "valid": False, "message": "Not a tomato leaf"}
@@ -93,6 +108,7 @@ async def trigger_prediction(user_id: str):
         raise HTTPException(status_code=404, detail="Session expired or file not found")
 
     try:
+        # Pointing to the task inside the worker folder
         task = celery_app.send_task("worker.classifier", args=[user_id, str(file_path)])
         logger.info(f"User {user_id} | Prediction started | TaskID: {task.id}")
         return {"task_id": task.id}
@@ -106,7 +122,6 @@ async def get_final_result(user_id: str, task_id: str):
     try:
         result = redis_client.get(task_id)
         if result:
-            # Atomic cleanup
             user_folder = UPLOAD_DIR / user_id
             if user_folder.exists():
                 shutil.rmtree(user_folder)
@@ -118,5 +133,3 @@ async def get_final_result(user_id: str, task_id: str):
     except Exception:
         logger.exception(f"Error retrieving result for {task_id}")
         return {"status": "error", "message": "Internal error"}
-
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")

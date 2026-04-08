@@ -24,7 +24,7 @@ class TomatoModelSuite:
             if model_name == 'resnet':
                 # Load ResNet50 Full Model (Architecture + Weights)
                 cls._models['resnet'] = tf.keras.models.load_model(
-                    "models/resnet50/v1/tomato_resnet_model.h5", 
+                    "/app/models/resnet50/v1/tomato_resnet_model.h5", 
                     compile=False
                 )
                 cls._warmup('resnet')
@@ -33,7 +33,7 @@ class TomatoModelSuite:
             elif model_name == 'gate_keeper':
                 # Load Binary Filter Model (Architecture + Weights)
                 cls._models["gate_keeper"] = tf.keras.models.load_model(
-                    "models/gatekeeper/v1/tomato_leaf_validator.h5", 
+                    "/app/models/gatekeeper/v1/tomato_leaf_validator.h5", 
                     compile=False
                 )
                 cls._warmup('gate_keeper')
@@ -72,7 +72,7 @@ class TomatoModelSuite:
         model = models.Model(inputs=base.input, outputs=output)
         
         # Load the custom fine-tuned weights into the reconstructed architecture
-        model.load_weights("models/efficientnetb0/v1/efficientnetb0_tomato_96pct_weights.h5")
+        model.load_weights("/app/models/efficientnetb0/v1/efficientnetb0_tomato_96pct_weights.h5")
         return model
 
     @classmethod
