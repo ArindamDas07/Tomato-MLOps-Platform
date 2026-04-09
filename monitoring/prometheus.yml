@@ -2,23 +2,37 @@ global:
   scrape_interval: 10s
 
 scrape_configs:
-  # --- Tomato API ---
-  - job_name: "tomato_api"
-    static_configs:
-      - targets: ["tomato-api-service:80"] # K8s Service Name
+  # --- 1. DYNAMIC API DISCOVERY (The Master Feature) ---
+  # This uses Kubernetes Service Discovery to find every individual Pod.
+  # This allows you to see metrics for EACH replica if you scale up.
+  - job_name: 'tomato-api'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      # Only scrape pods that have the label 'app: tomato-api'
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: tomato-api
+      # CRITICAL FIX: The API Pods listen on 8000. 
+      # This replaces the default port with 8000 so the scraper works.
+      - source_labels: [__address__]
+        action: replace
+        regex: ([^:]+)(?::\d+)?
+        replacement: $1:8000
+        target_label: __address__
 
-  # --- Pushgateway (For Workers) ---
-  - job_name: "tomato_pushgateway"
+  # --- 2. PUSHGATEWAY (For Worker Metrics) ---
+  - job_name: 'pushgateway'
     honor_labels: true  
     static_configs:
-      - targets: ["pushgateway-service:9091"]
+      - targets: ['pushgateway-service:9091']
 
-  # --- Redis Exporter ---
-  - job_name: "redis"
+  # --- 3. REDIS MONITORING (Via Redis Exporter) ---
+  - job_name: 'redis'
     static_configs:
-      - targets: ["redis-exporter-service:9121"]
+      - targets: ['redis-exporter-service:9121']
 
-  # --- Prometheus Self ---
-  - job_name: "prometheus"
+  # --- 4. PROMETHEUS SELF-HEALTH ---
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ["localhost:9090"]
+      - targets: ['localhost:9090']
