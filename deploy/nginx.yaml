@@ -4,16 +4,44 @@ metadata:
   name: nginx-config
 data:
   nginx.conf: |
-    events { worker_connections 1024; }
+    events { 
+        worker_connections 1024; 
+    }
+    
     http {
+        # --- 1. RATE LIMITING SETUP ---
+        # Limits each user (IP) to 5 requests per second.
+        # 'api_limit' is the name of this rule.
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=5r/s;
+
+        # --- 2. LEAST CONNECTIONS LOAD BALANCING ---
+        # This tells Nginx: "Don't just rotate traffic. Send the next 
+        # tomato image to the API pod that is the least busy right now."
+        upstream tomato_backend {
+            least_conn; 
+            server tomato-api-service:80;
+        }
+
         server {
             listen 80;
-            client_max_body_size 10M; # For high-res leaf photos
+            
+            # Allow 10MB images (standard Nginx only allows 1MB)
+            client_max_body_size 10M; 
+
             location / {
+                # --- APPLY RATE LIMITING ---
+                # 'burst=10' allows a user to occasionally click fast, 
+                # but 'nodelay' stops them if they try to attack.
                 limit_req zone=api_limit burst=10 nodelay;
-                proxy_pass http://tomato-api-service:80;
+
+                # --- APPLY LOAD BALANCING ---
+                # Pointing to our 'tomato_backend' defined above
+                proxy_pass http://tomato_backend;
+                
+                # Standard Headers (Important for FastAPI to know the user's IP)
                 proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             }
         }
     }
@@ -51,7 +79,7 @@ kind: Service
 metadata:
   name: nginx-ingress
 spec:
-  type: LoadBalancer # This is your MAIN ENTRY POINT
+  type: LoadBalancer # THIS IS YOUR ENTRY POINT: http://localhost
   ports:
   - port: 80
     targetPort: 80
