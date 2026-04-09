@@ -7,7 +7,7 @@ import time
 import socket
 import shutil
 from pathlib import Path
-from app.redis_conn import redis_client 
+from api.redis_conn import redis_client 
 from loguru import logger
 import numpy as np
 import os 

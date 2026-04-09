@@ -19,10 +19,10 @@ spec:
         image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
         resources:
           requests:
-            memory: "1Gi"
+            memory: "1.5Gi"
             cpu: "500m"
           limits:
-            memory: "2Gi" # TensorFlow needs room
+            memory: "3Gi" # TensorFlow needs room
             cpu: "1000m"
         envFrom:
         - configMapRef:
