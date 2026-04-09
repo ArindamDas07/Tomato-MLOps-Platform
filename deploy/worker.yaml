@@ -15,13 +15,25 @@ spec:
       containers:
       - name: tomato-worker
         image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
+        
+        # --- THE SPEED TWEAK ---
+        # Tells K8s to use the local 'docker pull' image if it exists
+        imagePullPolicy: IfNotPresent 
+        
         resources:
-          limits: {memory: "3Gi", cpu: "1000m"}
+          # --- THE STARTUP TWEAK ---
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "3Gi"
+            cpu: "1000m"
+            
         envFrom: [{configMapRef: {name: tomato-config}}]
         volumeMounts:
         - name: shared-storage
           mountPath: /app/uploads
-          subPath: active-sessions # Only sees the "Trash Zone"
+          subPath: active-sessions
       volumes:
       - name: shared-storage
         persistentVolumeClaim:
