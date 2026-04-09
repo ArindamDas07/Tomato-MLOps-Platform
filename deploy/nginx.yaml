@@ -9,16 +9,13 @@ data:
     }
     
     http {
-        # 1. KUBERNETES DNS RESOLVER
         resolver 10.96.0.10 valid=5s;
 
-        # 2. RATE LIMITER SETUP (5 requests per second)
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=5r/s;
 
-        # 3. LEAST CONNECT LOAD BALANCER
         upstream tomato_backend {
             least_conn;
-            # --- THE CRITICAL FIX: Port must be 8000 to match FastAPI Pods ---
+            # Port 8000 matches your FastAPI Pods
             server tomato-api-service.default.svc.cluster.local:8000;
         }
 
@@ -27,18 +24,17 @@ data:
             client_max_body_size 10M;
 
             location / {
-                # APPLY RATE LIMITER
                 limit_req zone=api_limit burst=10 nodelay;
 
-                # 4. REVERSE PROXY WITH DYNAMIC RESOLUTION
                 set $target http://tomato_backend;
-                proxy_pass $target;
+                
+                # --- THE CRITICAL FIX ---
+                # Without '$request_uri', Nginx deletes the word '/upload'
+                proxy_pass $target$request_uri; 
                 
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                
-                # Extended timeout for heavy AI inference
                 proxy_read_timeout 90s;
             }
         }
@@ -83,7 +79,7 @@ metadata:
 spec:
   type: LoadBalancer 
   ports:
-  - port: 80        # Browser entry point (http://localhost)
-    targetPort: 80   # Internal Nginx port
+  - port: 80        # Browser entry (http://localhost)
+    targetPort: 80
   selector:
     app: nginx
