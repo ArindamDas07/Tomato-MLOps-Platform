@@ -1,0 +1,102 @@
+# --- 1. PROMETHEUS CONFIG ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 10s
+    scrape_configs:
+      - job_name: 'tomato-api'
+        static_configs:
+          - targets: ['tomato-api-service:80']
+      - job_name: 'pushgateway'
+        static_configs:
+          - targets: ['pushgateway-service:9091']
+---
+# --- 2. MONITORING STACK (Prometheus, Grafana, Pushgateway) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: monitoring
+  template:
+    metadata:
+      labels:
+        component: monitoring
+    spec:
+      containers:
+      # --- PROMETHEUS ---
+      - name: prometheus
+        image: prom/prometheus
+        args: 
+          - "--config.file=/etc/prometheus/prometheus.yml"
+          - "--storage.tsdb.path=/prometheus"
+        ports:
+          - containerPort: 9090
+        volumeMounts:
+        - name: p-conf
+          mountPath: /etc/prometheus/prometheus.yml
+          subPath: prometheus.yml
+        - name: shared-storage
+          mountPath: /prometheus
+          subPath: system-data/prometheus-db
+      # --- PUSHGATEWAY ---
+      - name: pushgateway
+        image: prom/pushgateway:v1.7.0
+        args: ["--persistence.file=/data/metrics.file"]
+        ports:
+          - containerPort: 9091
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /data
+          subPath: system-data/pushgateway-files
+      # --- GRAFANA ---
+      - name: grafana
+        image: grafana/grafana
+        ports:
+          - containerPort: 3000
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /var/lib/grafana
+          subPath: system-data/grafana-db
+      volumes:
+      - name: p-conf
+        configMap:
+          name: prometheus-config
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: tomato-pvc
+---
+# --- 3. MONITORING SERVICES ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pushgateway-service
+spec:
+  ports:
+  - port: 9091
+    targetPort: 9091
+  selector:
+    component: monitoring
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-ui
+spec:
+  type: LoadBalancer # Access UI at http://localhost:9090 and :3000
+  ports:
+  - name: prometheus
+    port: 9090
+    targetPort: 9090
+  - name: grafana
+    port: 3000
+    targetPort: 3000
+  selector:
+    component: monitoring

@@ -3,21 +3,10 @@ kind: ConfigMap
 metadata:
   name: tomato-config
 data:
-  # Infrastructure
   REDIS_HOST: "redis"
   REDIS_PORT: "6379"
   REDIS_DB_TASKS: "0"
   REDIS_DB_RESULTS: "1"
   REDIS_DB_APP: "2"
-  
-  # Scaling & Replicas (HPA will override these, but we keep defaults)
-  CELERY_WORKERS: "2"
-  
-  # Monitoring & Observability
   MLFLOW_URI: "http://mlflow:5000"
-  PUSHGATEWAY: "http://pushgateway:9091"
-  LOG_LEVEL: "INFO"
-  
-  # Timeouts
-  CELERY_TASK_TIMEOUT: "300"
-  API_REQUEST_TIMEOUT: "120"
+  PUSHGATEWAY: "http://pushgateway-service:9091"

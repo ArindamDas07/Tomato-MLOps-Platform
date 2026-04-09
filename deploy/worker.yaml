@@ -3,7 +3,6 @@ kind: Deployment
 metadata:
   name: tomato-worker
 spec:
-  replicas: 1 # HPA will manage this
   selector:
     matchLabels:
       app: tomato-worker
@@ -12,24 +11,17 @@ spec:
       labels:
         app: tomato-worker
     spec:
-      imagePullSecrets:       # <-- ADD THIS
-      - name: github-auth
+      imagePullSecrets: [{name: github-auth}]
       containers:
       - name: tomato-worker
         image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
         resources:
-          requests:
-            memory: "1.5Gi"
-            cpu: "500m"
-          limits:
-            memory: "3Gi" # TensorFlow needs room
-            cpu: "1000m"
-        envFrom:
-        - configMapRef:
-            name: tomato-config
+          limits: {memory: "3Gi", cpu: "1000m"}
+        envFrom: [{configMapRef: {name: tomato-config}}]
         volumeMounts:
         - name: shared-storage
           mountPath: /app/uploads
+          subPath: active-sessions # Only sees the "Trash Zone"
       volumes:
       - name: shared-storage
         persistentVolumeClaim:

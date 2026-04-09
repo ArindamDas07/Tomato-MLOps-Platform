@@ -12,20 +12,15 @@ spec:
       labels:
         app: tomato-api
     spec:
-      imagePullSecrets:       # <-- ADD THIS
-      - name: github-auth
+      imagePullSecrets: [{name: github-auth}]
       containers:
       - name: tomato-api
-        # Replace YOUR_GITHUB_USER with your actual username
         image: ghcr.io/arindamdas07/tomato-mlops-platform-api:latest
-        ports:
-        - containerPort: 8000
-        envFrom:
-        - configMapRef:
-            name: tomato-config
+        envFrom: [{configMapRef: {name: tomato-config}}]
         volumeMounts:
         - name: shared-storage
           mountPath: /app/uploads
+          subPath: active-sessions # Only sees the "Trash Zone"
       volumes:
       - name: shared-storage
         persistentVolumeClaim:
@@ -36,9 +31,5 @@ kind: Service
 metadata:
   name: tomato-api-service
 spec:
-  type: LoadBalancer # This makes it accessible to the world
-  ports:
-  - port: 80
-    targetPort: 8000
-  selector:
-    app: tomato-api
+  ports: [{port: 80, targetPort: 8000}]
+  selector: {app: tomato-api}
