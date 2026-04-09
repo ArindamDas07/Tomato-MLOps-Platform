@@ -1,5 +1,4 @@
 # --- 1. PERMISSIONS (RBAC) ---
-# This gives Prometheus permission to talk to the Kubernetes API to find Pods
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -27,7 +26,7 @@ roleRef:
   name: prometheus-role
   apiGroup: rbac.authorization.k8s.io
 ---
-# --- 2. PROMETHEUS DYNAMIC CONFIG ---
+# --- 2. PROMETHEUS CONFIG ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -38,23 +37,26 @@ data:
       scrape_interval: 10s
 
     scrape_configs:
-      # --- DYNAMIC DISCOVERY FOR SCALABLE API ---
+      # --- DYNAMIC DISCOVERY FOR API ---
       - job_name: 'tomato-api'
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
-          # Only scrape pods that have the label 'app: tomato-api'
           - source_labels: [__meta_kubernetes_pod_label_app]
             action: keep
             regex: tomato-api
-          # The API listens on 8000. This replaces the default Pod IP port with 8000.
           - source_labels: [__address__]
             action: replace
             regex: ([^:]+)(?::\d+)?
             replacement: $1:8000
             target_label: __address__
 
-      # --- PUSHGATEWAY (Metrics from Workers) ---
+      # --- NEW: REDIS TRACKING ---
+      - job_name: 'redis'
+        static_configs:
+          - targets: ['redis-exporter-service:9121']
+
+      # --- PUSHGATEWAY ---
       - job_name: 'pushgateway'
         honor_labels: true
         static_configs:
@@ -64,7 +66,7 @@ data:
         static_configs:
           - targets: ['localhost:9090']
 ---
-# --- 3. THE MONITORING DEPLOYMENT (Prometheus, Pushgateway, Grafana) ---
+# --- 3. MONITORING DEPLOYMENT ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -83,13 +85,11 @@ spec:
       imagePullSecrets:
         - name: github-auth
       containers:
-        # --- PROMETHEUS ---
         - name: prometheus
           image: prom/prometheus:v2.45.0
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
-            - "--storage.tsdb.retention.time=15d"
           ports:
             - containerPort: 9090
           volumeMounts:
@@ -100,10 +100,9 @@ spec:
               mountPath: /prometheus
               subPath: system-data/prometheus-db
         
-        # --- PUSHGATEWAY ---
         - name: pushgateway
           image: prom/pushgateway:v1.7.0
-          args: ["--persistence.file=/data/metrics.file", "--persistence.interval=5m"]
+          args: ["--persistence.file=/data/metrics.file"]
           ports:
             - containerPort: 9091
           volumeMounts:
@@ -111,7 +110,6 @@ spec:
               mountPath: /data
               subPath: system-data/pushgateway-files
 
-        # --- GRAFANA ---
         - name: grafana
           image: grafana/grafana:10.2.0
           ports:
@@ -150,12 +148,9 @@ spec:
   ports:
     - name: prometheus
       port: 9090
-      targetPort: 9090
     - name: grafana
       port: 3000
-      targetPort: 3000
     - name: pushgateway
       port: 9091
-      targetPort: 9091
   selector:
     component: monitoring
