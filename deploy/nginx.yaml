@@ -11,7 +11,7 @@ data:
     http {
         resolver 10.96.0.10 valid=5s;
 
-        limit_req_zone $binary_remote_addr zone=api_limit:10m rate=5r/s;
+        limit_req_zone $binary_remote_addr zone=api_limit:10m rate=100r/s;
 
         upstream tomato_backend {
             least_conn;
