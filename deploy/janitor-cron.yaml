@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tomato-janitor
+spec:
+  # This schedule means: "Run at the start of every hour"
+  schedule: "0 * * * *" 
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          # --- Use the ID Card to pull the image ---
+          imagePullSecrets:
+          - name: github-auth
+          
+          containers:
+          - name: janitor
+            # We use the Worker image because it already has Python and janitor.py
+            image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
+            # Overwrite the default command to run the janitor script
+            command: ["python", "worker/janitor.py"]
+            
+            volumeMounts:
+            - name: shared-storage
+              mountPath: /app/uploads
+              
+          restartPolicy: OnFailure
+          
+          volumes:
+          - name: shared-storage
+            persistentVolumeClaim:
+              claimName: tomato-pvc
