@@ -3,6 +3,7 @@ kind: Deployment
 metadata:
   name: mlflow
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: mlflow
@@ -14,17 +15,24 @@ spec:
       containers:
       - name: mlflow
         image: ghcr.io/mlflow/mlflow:v2.12.1
+        ports:
+        - containerPort: 5000
+        # --- THE PRO COMMAND ---
         command: ["/bin/sh", "-c"]
         args:
           - |
             pip install psycopg2-binary;
-            mlflow server --host 0.0.0.0 --port 5000 \
-            --backend-store-uri postgresql://mlflowuser:mlflowpass@postgres:5432/mlflowdb \
-            --default-artifact-root /app/uploads/artifacts
+            # Ensure the artifacts directory exists in our isolated subPath
+            mkdir -p /app/uploads/artifacts;
+            mlflow server \
+              --host 0.0.0.0 \
+              --port 5000 \
+              --backend-store-uri postgresql://mlflowuser:mlflowpass@postgres:5432/mlflowdb \
+              --default-artifact-root /app/uploads/artifacts
         volumeMounts:
         - name: shared-storage
           mountPath: /app/uploads
-          subPath: mlflow-data # Isolated Room
+          subPath: system-data/mlflow-data # Isolated from Janitor
       volumes:
       - name: shared-storage
         persistentVolumeClaim:
@@ -35,5 +43,10 @@ kind: Service
 metadata:
   name: mlflow
 spec:
-  ports: [{port: 5000}]
-  selector: {app: mlflow}
+  # --- THE FIX: Open the door to your browser ---
+  type: LoadBalancer 
+  ports:
+  - port: 5000
+    targetPort: 5000
+  selector:
+    app: mlflow
