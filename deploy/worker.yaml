@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tomato-worker
+spec:
+  replicas: 1 # HPA will manage this
+  selector:
+    matchLabels:
+      app: tomato-worker
+  template:
+    metadata:
+      labels:
+        app: tomato-worker
+    spec:
+      containers:
+      - name: tomato-worker
+        image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi" # TensorFlow needs room
+            cpu: "1000m"
+        envFrom:
+        - configMapRef:
+            name: tomato-config
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /app/uploads
+      volumes:
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: tomato-pvc
