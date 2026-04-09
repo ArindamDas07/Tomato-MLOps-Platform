@@ -24,11 +24,16 @@ celery_app = Celery(
     include=["worker.worker"]
 )
 
-# --- Optional Optimization Settings ---
+
 celery_app.conf.update(
     task_serializer='json',
-    accept_content=['json'],  # Security: Only accept JSON payloads
+    accept_content=['json'],
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
+    # --- NEW: PRO MOVE ---
+    # Task is only deleted from Redis AFTER it successfully finishes
+    task_acks_late=True, 
+    # If the worker crashes, the task is returned to the queue automatically
+    task_reject_on_worker_lost=True 
 )

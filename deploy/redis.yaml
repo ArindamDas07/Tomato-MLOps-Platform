@@ -3,6 +3,7 @@ kind: Deployment
 metadata:
   name: redis
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: redis
@@ -14,8 +15,18 @@ spec:
       containers:
       - name: redis
         image: redis:7-alpine
+        # COMMAND: This is the "Secret Sauce" to enable persistence
+        command: ["redis-server", "--appendonly", "yes"] 
         ports:
         - containerPort: 6379
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /data
+          subPath: redis-data # Keeps Redis data separate from images and Postgres
+      volumes:
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: tomato-pvc
 ---
 apiVersion: v1
 kind: Service
