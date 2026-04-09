@@ -5,7 +5,7 @@ from pathlib import Path
 from loguru import logger
 
 # This path must match the volume mount in K8s
-UPLOAD_DIR = Path("/app/uploads")
+UPLOAD_DIR = Path("/app/uploads/active-sessions")
 MAX_AGE_SECONDS = 3600 * 2  # 2 Hours
 
 def clean_stale_folders():
