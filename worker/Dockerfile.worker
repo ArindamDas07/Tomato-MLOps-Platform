@@ -1,21 +1,22 @@
 FROM python:3.10-slim
 
+ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+
 WORKDIR /app
 
-# Step A: Copy requirements from the ROOT
+# 1. Install dependencies
 COPY requirements-worker.txt .
-
-# Step B: Install heavy AI libraries
 RUN pip install --no-cache-dir -r requirements-worker.txt
 
-# Step C: Copy the worker code AND the models folder
+# 2. Copy the worker code and models
 COPY ./worker ./worker
 COPY ./models ./models
 
-# Step D: Create shared storage
+# --- THE FIX: Copy the api folder so the worker can find redis_conn.py ---
+COPY ./api ./api
+
+# 3. Shared storage folder
 RUN mkdir -p uploads && chmod 755 uploads
 
-# Step E: Run Celery
-# We use worker.celery_app because it is inside the worker folder
 CMD ["celery", "-A", "worker.celery_app", "worker", "--loglevel=info", "-c", "1"]
