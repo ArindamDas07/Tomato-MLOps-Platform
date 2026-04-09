@@ -12,6 +12,8 @@ spec:
       labels:
         app: tomato-api
     spec:
+      imagePullSecrets:       # <-- ADD THIS
+      - name: github-auth
       containers:
       - name: tomato-api
         # Replace YOUR_GITHUB_USER with your actual username

@@ -12,6 +12,8 @@ spec:
       labels:
         app: tomato-worker
     spec:
+      imagePullSecrets:       # <-- ADD THIS
+      - name: github-auth
       containers:
       - name: tomato-worker
         image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
