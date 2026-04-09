@@ -24,7 +24,7 @@ REDIS_DB_TASKS = os.getenv("REDIS_DB_TASKS", "0")
 
 # --- NEW: Standardized Path Setup ---
 BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_DIR = Path("/app/uploads/active-sessions") # Professional K8s shared volume path
+UPLOAD_DIR = Path("/app/uploads") # Professional K8s shared volume path
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 # -------------------- Initialization --------------------
