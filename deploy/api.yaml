@@ -16,11 +16,15 @@ spec:
       containers:
       - name: tomato-api
         image: ghcr.io/arindamdas07/tomato-mlops-platform-api:latest
+        resources: # Added for HPA compatibility
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
         envFrom: [{configMapRef: {name: tomato-config}}]
         volumeMounts:
         - name: shared-storage
           mountPath: /app/uploads
-          subPath: active-sessions # Only sees the "Trash Zone"
+          subPath: active-sessions
       volumes:
       - name: shared-storage
         persistentVolumeClaim:
@@ -31,5 +35,11 @@ kind: Service
 metadata:
   name: tomato-api-service
 spec:
-  ports: [{port: 80, targetPort: 8000}]
-  selector: {app: tomato-api}
+  # --- THE ELITE FIX: Headless Service ---
+  # This allows Nginx to see individual Pod IPs for true Least-Conn
+  clusterIP: None 
+  ports:
+  - port: 80
+    targetPort: 8000
+  selector:
+    app: tomato-api

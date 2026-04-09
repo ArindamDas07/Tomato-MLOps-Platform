@@ -9,39 +9,40 @@ data:
     }
     
     http {
-        # --- 1. RATE LIMITING SETUP ---
-        # Limits each user (IP) to 5 requests per second.
-        # 'api_limit' is the name of this rule.
+        # --- 1. THE DYNAMIC RESOLVER ---
+        # 10.96.0.10 is the internal Kubernetes DNS.
+        # 'valid=5s' forces Nginx to refresh the Pod IP list every 5 seconds.
+        resolver 10.96.0.10 valid=5s;
+
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=5r/s;
 
-        # --- 2. LEAST CONNECTIONS LOAD BALANCING ---
-        # This tells Nginx: "Don't just rotate traffic. Send the next 
-        # tomato image to the API pod that is the least busy right now."
+        # --- 2. THE LOAD BALANCER ---
+        # Note: In Open Source Nginx, least_conn works best when 
+        # the upstream is clearly defined.
         upstream tomato_backend {
-            least_conn; 
-            server tomato-api-service:80;
+            least_conn;
+            server tomato-api-service.default.svc.cluster.local:80;
         }
 
         server {
             listen 80;
-            
-            # Allow 10MB images (standard Nginx only allows 1MB)
-            client_max_body_size 10M; 
+            client_max_body_size 10M;
 
             location / {
-                # --- APPLY RATE LIMITING ---
-                # 'burst=10' allows a user to occasionally click fast, 
-                # but 'nodelay' stops them if they try to attack.
                 limit_req zone=api_limit burst=10 nodelay;
 
-                # --- APPLY LOAD BALANCING ---
-                # Pointing to our 'tomato_backend' defined above
-                proxy_pass http://tomato_backend;
+                # --- 3. THE "FREE" RE-RESOLUTION HACK ---
+                # By using a variable, Nginx is forced to use the 
+                # 'resolver' above to look up the IPs again.
+                set $target http://tomato_backend;
+                proxy_pass $target;
                 
-                # Standard Headers (Important for FastAPI to know the user's IP)
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                
+                # AI models are slow, so we set long timeouts
+                proxy_read_timeout 90s;
             }
         }
     }
@@ -63,6 +64,10 @@ spec:
       containers:
       - name: nginx
         image: nginx:alpine
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
         ports:
         - containerPort: 80
         volumeMounts:
@@ -79,7 +84,7 @@ kind: Service
 metadata:
   name: nginx-ingress
 spec:
-  type: LoadBalancer # THIS IS YOUR ENTRY POINT: http://localhost
+  type: LoadBalancer 
   ports:
   - port: 80
     targetPort: 80
