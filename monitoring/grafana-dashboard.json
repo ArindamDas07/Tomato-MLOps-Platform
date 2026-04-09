@@ -1,0 +1,28 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    {
+      "title": "Total Tomato Leaf Uploads",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(tomato_uploads_total)", "refId": "A" }],
+      "options": { "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "title": "AI Prediction Confidence",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "avg(tomato_inference_latency_seconds_sum / tomato_inference_latency_seconds_count)", "refId": "A" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "unit": "percentunit" } }
+    },
+    {
+      "title": "Disease Distribution (Pie Chart)",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [{ "expr": "sum by (disease) (tomato_disease_predictions_total)", "refId": "A" }]
+    }
+  ],
+  "schemaVersion": 38,
+  "title": "Tomato AI Platform - Executive View"
+}
