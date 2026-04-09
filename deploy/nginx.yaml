@@ -9,19 +9,17 @@ data:
     }
     
     http {
-        # --- 1. THE DYNAMIC RESOLVER ---
-        # 10.96.0.10 is the internal Kubernetes DNS.
-        # 'valid=5s' forces Nginx to refresh the Pod IP list every 5 seconds.
+        # 1. KUBERNETES DNS RESOLVER
         resolver 10.96.0.10 valid=5s;
 
+        # 2. RATE LIMITER SETUP (5 requests per second)
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=5r/s;
 
-        # --- 2. THE LOAD BALANCER ---
-        # Note: In Open Source Nginx, least_conn works best when 
-        # the upstream is clearly defined.
+        # 3. LEAST CONNECT LOAD BALANCER
         upstream tomato_backend {
             least_conn;
-            server tomato-api-service.default.svc.cluster.local:80;
+            # --- THE CRITICAL FIX: Port must be 8000 to match FastAPI Pods ---
+            server tomato-api-service.default.svc.cluster.local:8000;
         }
 
         server {
@@ -29,11 +27,10 @@ data:
             client_max_body_size 10M;
 
             location / {
+                # APPLY RATE LIMITER
                 limit_req zone=api_limit burst=10 nodelay;
 
-                # --- 3. THE "FREE" RE-RESOLUTION HACK ---
-                # By using a variable, Nginx is forced to use the 
-                # 'resolver' above to look up the IPs again.
+                # 4. REVERSE PROXY WITH DYNAMIC RESOLUTION
                 set $target http://tomato_backend;
                 proxy_pass $target;
                 
@@ -41,7 +38,7 @@ data:
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 
-                # AI models are slow, so we set long timeouts
+                # Extended timeout for heavy AI inference
                 proxy_read_timeout 90s;
             }
         }
@@ -86,7 +83,7 @@ metadata:
 spec:
   type: LoadBalancer 
   ports:
-  - port: 80
-    targetPort: 80
+  - port: 80        # Browser entry point (http://localhost)
+    targetPort: 80   # Internal Nginx port
   selector:
     app: nginx
