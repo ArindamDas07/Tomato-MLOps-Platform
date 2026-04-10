@@ -1,28 +1,83 @@
 {
-  "annotations": { "list": [] },
-  "editable": true,
+  "title": "Tomato AI - Executive Command Center",
   "panels": [
     {
-      "title": "Total Tomato Leaf Uploads",
-      "type": "stat",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "targets": [{ "expr": "sum(tomato_uploads_total)", "refId": "A" }],
-      "options": { "colorMode": "value", "graphMode": "area" }
-    },
-    {
-      "title": "AI Prediction Confidence",
+      "title": "TOTAL REQUESTS",
       "type": "gauge",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "targets": [{ "expr": "avg(tomato_inference_latency_seconds_sum / tomato_inference_latency_seconds_count)", "refId": "A" }],
-      "fieldConfig": { "defaults": { "min": 0, "max": 1, "unit": "percentunit" } }
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(tomato_uploads_total) or sum(tomato_uploads_total_total) or vector(0)" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 500, "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } }
     },
     {
-      "title": "Disease Distribution (Pie Chart)",
+      "title": "A/B TEST: RESNET",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "sum(tomato_disease_predictions_total{model_variant=\"resnet\"}) or vector(0)" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 250, "color": { "mode": "fixed", "fixedColor": "blue" } } }
+    },
+    {
+      "title": "A/B TEST: EFFICIENTNET",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "targets": [{ "expr": "sum(tomato_disease_predictions_total{model_variant=\"efficient\"}) or vector(0)" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 250, "color": { "mode": "fixed", "fixedColor": "orange" } } }
+    },
+    {
+      "title": "GATEKEEPER RATIO",
       "type": "piechart",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
-      "targets": [{ "expr": "sum by (disease) (tomato_disease_predictions_total)", "refId": "A" }]
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 8 },
+      "targets": [{ "expr": "sum by (status) (tomato_gatekeeper_checks_total)" }]
+    },
+    {
+      "title": "6. Model Drift: Brightness",
+      "type": "gauge",
+      "gridPos": { "h": 10, "w": 6, "x": 12, "y": 8 },
+      "targets": [{ 
+        "expr": "tomato_drift_percentage{drift_type=\"drift_brightness_pct\"}",
+        "legendFormat": "Brightness Drift" 
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "min": -50,
+          "max": 50,
+          "unit": "percent",
+          "displayName": "Brightness Drift",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": -20 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "7. Model Drift: Contrast",
+      "type": "gauge",
+      "gridPos": { "h": 10, "w": 6, "x": 18, "y": 8 },
+      "targets": [{ 
+        "expr": "tomato_drift_percentage{drift_type=\"drift_contrast_pct\"}",
+        "legendFormat": "Contrast Drift" 
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "min": -50,
+          "max": 50,
+          "unit": "percent",
+          "displayName": "Contrast Drift",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": -25 },
+              { "color": "red", "value": 25 }
+            ]
+          }
+        }
+      }
     }
   ],
-  "schemaVersion": 38,
-  "title": "Tomato AI Platform - Executive View"
+  "schemaVersion": 38
 }
