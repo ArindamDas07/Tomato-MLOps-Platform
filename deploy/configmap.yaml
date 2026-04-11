@@ -10,3 +10,5 @@ data:
   REDIS_DB_APP: "2"
   MLFLOW_URI: "http://mlflow:5000"
   PUSHGATEWAY: "http://pushgateway-service:9091"
+  # Set a global TTL for Redis results (in seconds) - 1 hour
+  RESULT_TTL: "3600"

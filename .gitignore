@@ -28,3 +28,4 @@ uploads/
 .vscode/
 .idea/
 *.swp
+k8s/tomato-secrets.yaml
