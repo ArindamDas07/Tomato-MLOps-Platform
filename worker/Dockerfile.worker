@@ -1,22 +1,38 @@
 FROM python:3.10-slim
 
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
+# --- Step 1: Optimization ---
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
 WORKDIR /app
 
-# 1. Install dependencies
-COPY requirements-worker.txt .
-RUN pip install --no-cache-dir -r requirements-worker.txt
+# --- Step 2: System Dependencies ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
 
-# 2. Copy the worker code and models
-COPY ./worker ./worker
+# --- Step 3: Security ---
+RUN adduser --disabled-password --gecos '' appuser
+
+# --- Step 4: Layer Caching (Dependencies) ---
+COPY requirements-worker.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-worker.txt
+
+# --- Step 5: Copy Models (Heavy Layer - Cache this!) ---
 COPY ./models ./models
 
-# --- THE FIX: Copy the api folder so the worker can find redis_conn.py ---
-COPY ./api ./api
+# --- Step 6: Copy App Code (Shared & Worker) ---
+# We no longer need to copy anything from the 'api' folder!
+# The worker is now independent.
+COPY ./shared ./shared
+COPY ./worker ./worker
 
-# 3. Shared storage folder
-RUN mkdir -p uploads && chmod 755 uploads
+# --- Step 7: Permissions ---
+RUN mkdir -p uploads && chown -R appuser:appuser /app
+USER appuser
 
+# Start the worker
 CMD ["celery", "-A", "worker.celery_app", "worker", "--loglevel=info", "-c", "1"]

@@ -15,15 +15,12 @@ REDIS_DB_TASKS = os.getenv("REDIS_DB_TASKS", "0")
 REDIS_DB_RESULTS = os.getenv("REDIS_DB_RESULTS", "1")
 
 # --- Celery App Initialization ---
-# Standardized App ID: 'tomato_app' to match the Producer (main.py)
 celery_app = Celery(
     "tomato_app",
     broker=f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_TASKS}",
     backend=f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_RESULTS}",
-    # 'include' ensures the worker auto-registers the tasks in worker/worker.py
     include=["worker.worker"]
 )
-
 
 celery_app.conf.update(
     task_serializer='json',
@@ -31,9 +28,22 @@ celery_app.conf.update(
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
-    # --- NEW: PRO MOVE ---
+    
+    # --- SENIOR RESILIENCE SETTINGS ---
+    
+    # If Redis is still starting up, don't crash. Wait and try again.
+    broker_connection_retry_on_startup=True,
+    
+    # How many times to try reconnecting if the broker drops
+    broker_connection_max_retries=10,
+
+    # --- RELIABILITY (You already had these, keeping them) ---
     # Task is only deleted from Redis AFTER it successfully finishes
     task_acks_late=True, 
     # If the worker crashes, the task is returned to the queue automatically
-    task_reject_on_worker_lost=True 
+    task_reject_on_worker_lost=True,
+    
+    # Optimization: Don't let one worker hog all tasks. 
+    # This helps with Auto-scaling (HPA).
+    worker_prefetch_multiplier=1 
 )

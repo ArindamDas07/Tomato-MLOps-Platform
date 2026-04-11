@@ -1,23 +1,33 @@
+# Use a specific version for reproducibility
 FROM python:3.10-slim
 
-# This tells Python where to look for your code
-ENV PYTHONPATH=/app
+# --- Step 1: Environment Optimization ---
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
 WORKDIR /app
 
-# Step A: Copy requirements from the ROOT into the container
-# Even though this Dockerfile is in the 'api' folder, 
-# Docker will find this file in the root during the build.
+# --- Step 2: System Security ---
+RUN adduser --disabled-password --gecos '' appuser
+
+# --- Step 3: Layer Caching ---
 COPY requirements-api.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-api.txt
 
-# Step B: Install the libraries
-RUN pip install --no-cache-dir -r requirements-api.txt
-
-# Step C: Copy the 'api' folder from your computer into the container
+# --- Step 4: Application Code (Shared & API) ---
+# Senior Move: We copy the shared infrastructure logic 
+# and the API logic separately.
+COPY ./shared ./shared
 COPY ./api ./api
 
-# Step D: Create the shared storage folder
-RUN mkdir -p uploads && chmod 755 uploads
+# --- Step 5: Storage Setup ---
+RUN mkdir -p uploads && chown -R appuser:appuser /app/uploads
 
-# Step E: Start the app
-# We use api.main:app because main.py is inside the api folder
+# --- Step 6: Final Permissions ---
+USER appuser
+EXPOSE 8000
+
+# Start the application
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

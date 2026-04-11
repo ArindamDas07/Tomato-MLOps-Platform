@@ -1,14 +1,13 @@
 import numpy as np
-from PIL import Image
-from io import BytesIO
+from PIL import Image, UnidentifiedImageError
+from loguru import logger
 
-# Import the specific preprocessing functions with aliased names for clarity
+# Model-specific preprocessing imports
 from tensorflow.keras.applications.resnet50 import preprocess_input as resnet_preprocess
 from tensorflow.keras.applications.efficientnet import preprocess_input as eff_preprocess
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
 
-# --- DRIFT DETECTION BASELINES ---
-# These values are derived from 18,339 training images and act as the "Source of Truth"
+# Baselines derived from the 18,339 training images
 TRAINING_BASELINES = {
     "brightness": 116.536,
     "contrast": 44.831,
@@ -17,43 +16,46 @@ TRAINING_BASELINES = {
     "b_channel": 109.645
 }
 
-# --- IMAGE PROCESSING UTILITIES ---
-
 def get_raw_array(image_path: str):
     """
-    Decodes an image from a file path into a standardized NumPy array (224x224x3).
-    This raw array (pixels 0-255) is the input for drift detection.
+    Safely decodes an image. 
+    Senior Tip: Always catch UnidentifiedImageError for user uploads.
     """
-    image = Image.open(image_path).convert("RGB")
-    image = image.resize((224, 224))
-    return np.array(image)
+    try:
+        # We use a context manager to ensure the file handle is closed
+        with Image.open(image_path) as img:
+            image = img.convert("RGB").resize((224, 224))
+            return np.array(image)
+    except UnidentifiedImageError:
+        logger.error(f"❌ Corrupt image file provided: {image_path}")
+        raise ValueError("Provided file is not a valid image.")
+    except Exception as e:
+        logger.error(f"❌ Unexpected image error: {e}")
+        raise
 
 def preprocess(arr: np.ndarray, model_name: str):
-    """
-    Applies model-specific preprocessing to a NumPy array.
-    Uses .copy() to prevent in-place modification and data corruption.
-    """
-    # Defensive copy to prevent in-place modifications by Keras functions
-    arr = arr.copy()
+    """Applies specific normalization based on the model architecture."""
+    # Work on a copy to ensure the raw array stays clean for drift detection
+    temp_arr = arr.copy().astype('float32')
     
     if model_name == "gate_keeper":
-        preprocessed_arr = mobilenet_preprocess(arr)
+        preprocessed = mobilenet_preprocess(temp_arr)
     elif model_name == 'resnet':
-        preprocessed_arr = resnet_preprocess(arr)
+        preprocessed = resnet_preprocess(temp_arr)
     elif model_name == 'efficient':
-        preprocessed_arr = eff_preprocess(arr)  
+        # EfficientNet usually expects [0, 255] or scaling depending on the version
+        preprocessed = eff_preprocess(temp_arr)  
     else:
-        raise ValueError(f"Unknown model name for preprocessing: {model_name}")
+        raise ValueError(f"Unknown preprocessing variant: {model_name}")
     
-    # Keras models expect a batch dimension (1, height, width, channels)
-    return np.expand_dims(preprocessed_arr, axis=0)
+    return np.expand_dims(preprocessed, axis=0)
 
 def calculate_drift(arr: np.ndarray):
     """
-    Calculates both absolute stats and percentage drift from training baselines.
-    This provides actionable telemetry for MLflow and Prometheus.
+    Calculates statistical deviation from the training set.
+    Essential for MLOps monitoring.
     """
-    # 1. Calculate the statistics for the live image
+    # 1. Real-time stats
     live_stats = {
         "brightness": np.mean(arr),
         "contrast": np.std(arr),
@@ -62,11 +64,11 @@ def calculate_drift(arr: np.ndarray):
         "b_channel": np.mean(arr[:, :, 2])
     }
     
-    # 2. Calculate the percentage drift from the training baseline
+    # 2. Percentage Drift
     drift_percentages = {}
-    for key, baseline_value in TRAINING_BASELINES.items():
-        live_value = live_stats[key]
-        drift = ((live_value - baseline_value) / baseline_value) * 100
-        drift_percentages[f"drift_{key}_pct"] = drift
+    for key, baseline in TRAINING_BASELINES.items():
+        live_val = live_stats[key]
+        # Formula: ((Actual - Expected) / Expected) * 100
+        drift_percentages[f"drift_{key}_pct"] = ((live_val - baseline) / baseline) * 100
     
     return live_stats, drift_percentages

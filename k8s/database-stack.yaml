@@ -1,0 +1,155 @@
+# --- 1. PERSISTENT STORAGE ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tomato-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce # Standard for Docker Desktop / Single Node
+  resources:
+    requests:
+      storage: 2Gi
+---
+# --- 2. REDIS (Task Broker & Result Store) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        command: ["redis-server", "--appendonly", "yes"] # Data Persistence enabled
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+        # Senior Move: Ensure Redis is actually ready before letting the API connect
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /data
+          subPath: redis-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  ports: [{port: 6379}]
+  selector: {app: redis}
+---
+# --- 3. REDIS EXPORTER (For Prometheus Metrics) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-exporter
+  template:
+    metadata:
+      labels:
+        app: redis-exporter
+    spec:
+      containers:
+      - name: redis-exporter
+        image: oliver006/redis_exporter:v1.55.0
+        env:
+        - name: REDIS_ADDR
+          value: "redis:6379"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "32Mi"
+        ports:
+        - containerPort: 9121
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-exporter-service
+spec:
+  ports: [{port: 9121}]
+  selector: {app: redis-exporter}
+---
+# --- 4. POSTGRES (MLflow Backend Store) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: "mlflowdb"
+        - name: POSTGRES_USER
+          value: "mlflowuser"
+        # Senior Fix: Pulling password from the Secret we defined in Phase 1
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: tomato-secrets
+              key: POSTGRES_PASSWORD
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "300m"
+            memory: "256Mi"
+        # Readiness Probe: MLflow server waits for this to pass
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "mlflowuser", "-d", "mlflowdb"]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /var/lib/postgresql/data
+          subPath: postgres-data
+      volumes:
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: tomato-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  ports: [{port: 5432}]
+  selector: {app: postgres}

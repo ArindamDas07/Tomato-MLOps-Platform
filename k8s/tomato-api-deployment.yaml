@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tomato-api
+spec:
+  replicas: 2 # Start with 2 for High Availability
+  selector:
+    matchLabels:
+      app: tomato-api
+  template:
+    metadata:
+      labels:
+        app: tomato-api
+    spec:
+      containers:
+      - name: tomato-api
+        image: ghcr.io/arindamdas07/tomato-mlops-platform-api:latest
+        
+        # --- NEW: Resource Contracts ---
+        resources:
+          requests:
+            cpu: "100m"      # 0.1 CPU core
+            memory: "256Mi"  # Enough for FastAPI + dependencies
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+        # --- NEW: Health Probes ---
+        # We check the /docs or a /health endpoint. 
+        # We wait 10s because the container needs to start.
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+        envFrom:
+        - configMapRef:
+            name: tomato-config
+        - secretRef:
+            name: tomato-secrets
+            
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /app/uploads
+          subPath: active-sessions
+      
+      volumes:
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: tomato-pvc

@@ -2,45 +2,45 @@ from loguru import logger
 from prometheus_client import CollectorRegistry, Counter, Histogram, push_to_gateway, Gauge
 import mlflow
 import os
+import time
 from dotenv import load_dotenv
 
-# -------------------- Initialization --------------------
-# Load environment variables for infrastructure endpoints
 load_dotenv()
 
 MLFLOW_URI = os.getenv("MLFLOW_URI", "http://mlflow:5000")
 PUSHGATEWAY = os.getenv("PUSHGATEWAY", "http://pushgateway:9091")
 
 # -------------------- MLflow Setup --------------------
-# Centralized logic to handle concurrent experiment initialization across multiple workers
 mlflow.set_tracking_uri(MLFLOW_URI)
-experiment_name = "Tomato Leaf Disease Detector"
+EXPERIMENT_NAME = "Tomato Leaf Disease Detector"
+_cached_experiment_id = None # Senior Move: Local cache for the ID
 
-def setup_monitoring(name):
+def get_experiment_id():
     """
-    Safely retrieves or creates the MLflow experiment ID.
-    Handles race conditions during horizontal scaling.
+    Lazy loader for Experiment ID. 
+    Prevents the worker from crashing on startup if MLflow is slow.
     """
+    global _cached_experiment_id
+    if _cached_experiment_id:
+        return _cached_experiment_id
+
     try:
-        exp = mlflow.get_experiment_by_name(name)
+        exp = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
         if exp:
-            return exp.experiment_id
-        return mlflow.create_experiment(name)
-    except Exception:
-        # Fallback if another worker created it simultaneously
-        return mlflow.get_experiment_by_name(name).experiment_id
-
-# Global Experiment ID for this worker session
-EXPERIMENT_ID = setup_monitoring(experiment_name)
+            _cached_experiment_id = exp.experiment_id
+        else:
+            _cached_experiment_id = mlflow.create_experiment(EXPERIMENT_NAME)
+        return _cached_experiment_id
+    except Exception as e:
+        logger.warning(f"📡 MLflow not reachable: {e}. Metrics will not be logged to MLflow.")
+        return None
 
 # -------------------- Prometheus Setup --------------------
-# Using a custom Registry to isolate our application metrics
 registry = CollectorRegistry()
 
-# Counter for tracking the ingestion funnel (Total uploads)
+# Funnel tracking
 TOMATO_REQUESTS = Counter("tomato_uploads_total", "Total images uploaded", registry=registry)
 
-# Counter with labels to track Gatekeeper filtering performance
 TOMATO_GATEKEEPER = Counter(
     "tomato_gatekeeper_checks_total", 
     "Total Gatekeeper passes/fails", 
@@ -48,7 +48,7 @@ TOMATO_GATEKEEPER = Counter(
     registry=registry
 )
 
-# Multi-dimensional Counter to track A/B testing results and disease distribution
+# A/B Testing & Disease Distribution
 TOMATO_DISEASE = Counter(
     'tomato_disease_predictions_total', 
     "Total successful predictions", 
@@ -56,7 +56,7 @@ TOMATO_DISEASE = Counter(
     registry=registry
 )
 
-# Labeled Histogram for high-resolution performance monitoring (P95/P99 latency)
+# Performance monitoring
 TOMATO_LATENCY = Histogram(
     "tomato_inference_latency_seconds", 
     "Time taken for model inference", 
@@ -65,7 +65,7 @@ TOMATO_LATENCY = Histogram(
     registry=registry
 )
 
-# Multi-dimensional Gauge for tracking data drift vs training baseline
+# Data Drift (Very important for Senior MLOps)
 DRIFT_GAUGE = Gauge(
     "tomato_drift_percentage", 
     "Deviation from training baseline", 
@@ -76,14 +76,13 @@ DRIFT_GAUGE = Gauge(
 # -------------------- Helper Functions --------------------
 
 def update_drift(drift_result: dict):
-    """Updates all 5 drift dimensions (Brightness, Contrast, RGB) in Prometheus."""
     for key, value in drift_result.items():
         DRIFT_GAUGE.labels(drift_type=key).set(value)
 
 def push_metrics(worker_name: str):
     """
-    Pushes the local registry to the Pushgateway.
-    Uses worker_instance as a grouping key to support horizontal scaling.
+    Pushes to Pushgateway. Wrap in try-except so a 
+    monitoring failure doesn't crash the AI worker.
     """
     try:
         push_to_gateway(
@@ -93,53 +92,56 @@ def push_metrics(worker_name: str):
             registry=registry
         )
     except Exception as e:
-        logger.error(f"Could not push to gateway: {e}")
+        logger.error(f"📊 Could not push to Prometheus Gateway: {e}")
 
 # -------------------- Unified Observability Reporters --------------------
 
 def log_inference_result(user_id, model_name, label, conf, stats, drift, latency):
     """
-    Atomic reporter for the classification stage.
-    Synchronizes Infrastructure telemetry (Prometheus) with Model telemetry (MLflow).
+    Logs data to both Prometheus (Infrastructure) and MLflow (Model Science).
     """
-    # 1. Update Prometheus internal state
+    # 1. Update Prometheus (This is local memory, very safe)
     TOMATO_DISEASE.labels(disease=label, model_variant=model_name).inc()
     TOMATO_LATENCY.labels(model_variant=model_name).observe(latency)
     update_drift(drift)
     
-    # 2. Record full trace to MLflow
-    with mlflow.start_run(experiment_id=EXPERIMENT_ID, run_name=f"user_{user_id}"):
-        mlflow.set_tag("user_id", user_id)
-        mlflow.log_param("model_used", model_name)
-        mlflow.log_param("prediction", label)
-        
-        mlflow.log_metric("confidence", conf)
-        mlflow.log_metric("latency_seconds", latency)
-        
-        # Iterative logging for dynamic metadata (Drift and Stats)
-        for key, value in stats.items():
-            mlflow.log_metric(key, value)
-        for key, value in drift.items():
-            mlflow.log_metric(key, value)
+    # 2. Record to MLflow (External Network Call)
+    exp_id = get_experiment_id()
+    if exp_id:
+        try:
+            with mlflow.start_run(experiment_id=exp_id, run_name=f"user_{user_id}"):
+                mlflow.set_tag("user_id", user_id)
+                mlflow.log_param("model_used", model_name)
+                mlflow.log_param("prediction", label)
+                mlflow.log_metric("confidence", conf)
+                mlflow.log_metric("latency_seconds", latency)
+                
+                for key, value in stats.items():
+                    mlflow.log_metric(key, value)
+                for key, value in drift.items():
+                    mlflow.log_metric(key, value)
+        except Exception as e:
+            logger.error(f"❌ MLflow logging failed for {user_id}: {e}")
             
-    logger.success(f"Inference logged for User {user_id} | Model: {model_name} | Latency: {latency}s")
+    logger.success(f"✅ Telemetry recorded for {user_id}")
 
 def log_gatekeeper_result(user_id, status, latency):
     """
-    Specifically logs the Gatekeeper's performance and filter rate.
+    Logs Gatekeeper performance.
     """
-    # Increment total ingress counter
     TOMATO_REQUESTS.inc()
-    
-    # Update status and performance metrics
     TOMATO_GATEKEEPER.labels(status=status).inc()
     TOMATO_LATENCY.labels(model_variant="gatekeeper").observe(latency)
     
-    # Log gatekeeper performance to MLflow for pipeline auditing
-    with mlflow.start_run(experiment_id=EXPERIMENT_ID, run_name=f"gk_{user_id}"):
-        mlflow.set_tag("user_id", user_id)
-        mlflow.log_param("step", "gatekeeper")
-        mlflow.log_param("gatekeeper_status", status)
-        mlflow.log_metric("latency", latency)
+    exp_id = get_experiment_id()
+    if exp_id:
+        try:
+            with mlflow.start_run(experiment_id=exp_id, run_name=f"gk_{user_id}"):
+                mlflow.set_tag("user_id", user_id)
+                mlflow.log_param("step", "gatekeeper")
+                mlflow.log_param("status", status)
+                mlflow.log_metric("latency", latency)
+        except Exception as e:
+            logger.error(f"❌ MLflow Gatekeeper logging failed: {e}")
 
-    logger.info(f"Gatekeeper finished for {user_id} | Status: {status} | Latency: {latency}s")
+    logger.info(f"🛡️ Gatekeeper telemetry recorded | {status}")

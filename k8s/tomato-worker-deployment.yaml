@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tomato-worker
+spec:
+  # We start with 1 worker, and let the HPA add more if needed
+  replicas: 1 
+  selector:
+    matchLabels:
+      app: tomato-worker
+  template:
+    metadata:
+      labels:
+        app: tomato-worker
+    spec:
+      imagePullSecrets: [{name: github-auth}]
+      containers:
+      - name: tomato-worker
+        image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
+        imagePullPolicy: IfNotPresent 
+        
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "3Gi"  # Allow room for heavy image processing
+            cpu: "1000m"
+            
+        envFrom:
+        - configMapRef:
+            name: tomato-config
+        - secretRef:
+            name: tomato-secrets # Added Phase 1 Security Fix
+
+        # --- NEW: Worker Health Probes ---
+        # Since Celery has no port, we check the process list
+        livenessProbe:
+          exec:
+            command:
+            - pgrep
+            - -f
+            - celery
+          initialDelaySeconds: 30 # Give TF time to load models
+          periodSeconds: 20
+
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /app/uploads
+          subPath: active-sessions
+
+      volumes:
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: tomato-pvc

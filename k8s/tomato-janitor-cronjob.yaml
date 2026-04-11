@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tomato-janitor
+spec:
+  # Schedule: Every hour, on the hour.
+  schedule: "0 * * * *"
+  
+  # --- SENIOR ADDITION: Housekeeping for the Housekeeper ---
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  
+  # If a job is taking too long, don't start a new one on top of it
+  concurrencyPolicy: Forbid 
+
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          imagePullSecrets: [{name: github-auth}]
+          containers:
+          - name: janitor
+            image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
+            command: ["python", "worker/janitor.py"]
+            
+            # Resources: Even a janitor needs boundaries
+            resources:
+              requests:
+                cpu: "50m"
+                memory: "64Mi"
+              limits:
+                cpu: "100m"
+                memory: "128Mi"
+
+            volumeMounts:
+            - name: shared-storage
+              mountPath: /app/uploads
+              # THE CRITICAL FIX: Only mount the folder where images are stored.
+              # This protects Redis/Postgres data from the Janitor script.
+              subPath: active-sessions 
+              
+          restartPolicy: OnFailure
+          volumes:
+          - name: shared-storage
+            persistentVolumeClaim: 
+              claimName: tomato-pvc

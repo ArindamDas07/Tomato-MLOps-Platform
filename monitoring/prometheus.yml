@@ -1,33 +1,38 @@
 global:
   scrape_interval: 10s
+  scrape_timeout: 9s # Senior Move: Ensure timeout is slightly less than interval
 
 scrape_configs:
-  # --- 1. DYNAMIC API DISCOVERY (The Master Feature) ---
-  # This uses Kubernetes Service Discovery to find every individual Pod.
-  # This allows you to see metrics for EACH replica if you scale up.
+  # --- 1. DYNAMIC API DISCOVERY ---
+  # This allows the HPA to scale your API from 2 to 10 pods seamlessly.
   - job_name: 'tomato-api'
     kubernetes_sd_configs:
       - role: pod
+        # Senior Tip: Only look in the namespace where the app is deployed
+        namespaces:
+          names:
+            - default 
     relabel_configs:
-      # Only scrape pods that have the label 'app: tomato-api'
+      # Only scrape pods with the label 'app: tomato-api'
       - source_labels: [__meta_kubernetes_pod_label_app]
         action: keep
         regex: tomato-api
-      # CRITICAL FIX: The API Pods listen on 8000. 
-      # This replaces the default port with 8000 so the scraper works.
+      # Ensure we hit the container port 8000 (FastAPI)
       - source_labels: [__address__]
         action: replace
         regex: ([^:]+)(?::\d+)?
         replacement: $1:8000
         target_label: __address__
 
-  # --- 2. PUSHGATEWAY (For Worker Metrics) ---
+  # --- 2. PUSHGATEWAY (The Worker Metrics) ---
+  # This is where your A/B Testing and Drift data lives.
   - job_name: 'pushgateway'
     honor_labels: true  
     static_configs:
       - targets: ['pushgateway-service:9091']
 
-  # --- 3. REDIS MONITORING (Via Redis Exporter) ---
+  # --- 3. REDIS MONITORING ---
+  # Tracks how many tasks are waiting in the queue.
   - job_name: 'redis'
     static_configs:
       - targets: ['redis-exporter-service:9121']
