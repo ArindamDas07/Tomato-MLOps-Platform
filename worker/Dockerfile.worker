@@ -1,35 +1,41 @@
 FROM python:3.10-slim
 
 # --- Step 1: Optimization ---
+# PYTHONDONTWRITEBYTECODE: Saves disk space by not creating .pyc files
+# PYTHONUNBUFFERED: Essential for seeing logs in real-time in Grafana/K8s
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
 WORKDIR /app
 
-# --- Step 2: System Dependencies ---
+# --- Step 2: System Dependencies (CRITICAL FIX) ---
+# We add 'procps' so that the Kubernetes Liveness Probe (pgrep) works.
+# We add 'libgl1' etc. for TensorFlow/Pillow image processing.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libgl1 \
     libsm6 \
     libxext6 \
     libxrender1 \
+    procps \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Step 3: Security ---
 RUN adduser --disabled-password --gecos '' appuser
 
-# --- Step 4: Layer Caching (Dependencies) ---
+# --- Step 4: Layer Caching ---
 COPY requirements-worker.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-worker.txt
 
-# --- Step 5: Copy Models (Heavy Layer - Cache this!) ---
+# --- Step 5: Copy Models ---
+# Copied BEFORE code because models change less often than code.
+# This makes Auto-scaling pulls faster.
 COPY ./models ./models
 
-# --- Step 6: Copy App Code (Shared & Worker) ---
-# We no longer need to copy anything from the 'api' folder!
-# The worker is now independent.
+# --- Step 6: Copy App Code ---
 COPY ./shared ./shared
 COPY ./worker ./worker
 
@@ -38,4 +44,6 @@ RUN mkdir -p uploads && chown -R appuser:appuser /app
 USER appuser
 
 # Start the worker
+# -c 1 is best for Auto-scaling: Let K8s manage replicas of PODS
+# rather than Celery managing replicas of processes.
 CMD ["celery", "-A", "worker.celery_app", "worker", "--loglevel=info", "-c", "1"]
