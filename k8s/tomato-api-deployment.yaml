@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: tomato-api
 spec:
-  replicas: 2 # Start with 2 for High Availability
+  replicas: 2 
   selector:
     matchLabels:
       app: tomato-api
@@ -12,22 +12,20 @@ spec:
       labels:
         app: tomato-api
     spec:
+      # Use the secret for pulling images from GHCR
+      imagePullSecrets: [{name: github-auth}]
       containers:
       - name: tomato-api
         image: ghcr.io/arindamdas07/tomato-mlops-platform-api:latest
         
-        # --- NEW: Resource Contracts ---
         resources:
           requests:
-            cpu: "100m"      # 0.1 CPU core
-            memory: "256Mi"  # Enough for FastAPI + dependencies
+            cpu: "100m"
+            memory: "256Mi"
           limits:
             cpu: "500m"
             memory: "512Mi"
 
-        # --- NEW: Health Probes ---
-        # We check the /docs or a /health endpoint. 
-        # We wait 10s because the container needs to start.
         readinessProbe:
           httpGet:
             path: /
@@ -48,11 +46,12 @@ spec:
             name: tomato-secrets
             
         volumeMounts:
-        - name: shared-storage
+        - name: shared-uploads
           mountPath: /app/uploads
-          subPath: active-sessions
+          # We mount the root of our new dedicated PVC
       
       volumes:
-      - name: shared-storage
+      - name: shared-uploads
         persistentVolumeClaim:
-          claimName: tomato-pvc
+          # SENIOR FIX: Points to the dedicated storage bridge
+          claimName: tomato-upload-pvc

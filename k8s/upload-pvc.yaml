@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tomato-upload-pvc
+spec:
+  # Senior Note: On Docker Desktop, ReadWriteOnce allows multiple pods 
+  # to mount the disk as long as they are on the same machine.
+  accessModes:
+    - ReadWriteOnce 
+  resources:
+    requests:
+      storage: 1Gi # 1GB is plenty for thousands of tomato leaf JPGs

@@ -1,3 +1,13 @@
+# --- PVC for MLflow Artifacts (Models/Plots) ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifact-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 2Gi }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,77 +15,47 @@ metadata:
 spec:
   replicas: 1
   selector:
-    matchLabels:
-      app: mlflow
+    matchLabels: { app: mlflow }
   template:
     metadata:
-      labels:
-        app: mlflow
+      labels: { app: mlflow }
     spec:
       containers:
       - name: mlflow
         image: ghcr.io/mlflow/mlflow:v2.12.1
-        ports:
-        - containerPort: 5000
-          name: mlflow-port
-        
+        ports: [{ containerPort: 5000 }]
         resources:
-          requests:
-            cpu: "100m"
-            memory: "256Mi"
-          limits:
-            cpu: "500m"
-            memory: "1Gi"
-
+          requests: { cpu: "100m", memory: "256Mi" }
+          limits: { cpu: "500m", memory: "1Gi" }
         env:
-          - name: DB_PASS
-            valueFrom:
-              secretKeyRef:
-                name: tomato-secrets
-                key: POSTGRES_PASSWORD 
-          - name: DB_USER
-            value: "mlflowuser"
-          - name: DB_NAME
-            value: "mlflowdb"
-
-        # Senior Move: Ensuring the server is ready before traffic hits
+        - name: DB_PASS
+          valueFrom:
+            secretKeyRef: { name: tomato-secrets, key: POSTGRES_PASSWORD }
         readinessProbe:
-          tcpSocket:
-            port: 5000
-          initialDelaySeconds: 20 # Give time for 'pip install' and DB connection
-          periodSeconds: 10
-
+          tcpSocket: { port: 5000 }
+          initialDelaySeconds: 15
         command: ["/bin/sh", "-c"]
         args:
           - |
             pip install psycopg2-binary;
-            mkdir -p /app/uploads/artifacts;
-            
             mlflow server \
               --host 0.0.0.0 \
               --port 5000 \
-              --backend-store-uri postgresql://${DB_USER}:${DB_PASS}@postgres:5432/${DB_NAME} \
-              --default-artifact-root /app/uploads/artifacts \
+              --backend-store-uri postgresql://mlflowuser:${DB_PASS}@postgres:5432/mlflowdb \
+              --default-artifact-root /mlflow-artifacts \
               --serve-artifacts
-              
         volumeMounts:
-        - name: shared-storage
-          mountPath: /app/uploads
-          subPath: system-data/mlflow-data 
-      
+        - name: artifacts
+          mountPath: /mlflow-artifacts
       volumes:
-      - name: shared-storage
-        persistentVolumeClaim:
-          claimName: tomato-pvc
+      - name: artifacts
+        persistentVolumeClaim: { claimName: mlflow-artifact-pvc }
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: mlflow
 spec:
-  type: LoadBalancer 
-  ports:
-  - port: 5000
-    targetPort: 5000
-  selector:
-    app: mlflow
+  type: LoadBalancer
+  ports: [{ port: 5000 }]
+  selector: { app: mlflow }

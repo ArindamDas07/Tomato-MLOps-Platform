@@ -3,7 +3,6 @@ kind: Deployment
 metadata:
   name: tomato-worker
 spec:
-  # We start with 1 worker, and let the HPA add more if needed
   replicas: 1 
   selector:
     matchLabels:
@@ -24,32 +23,31 @@ spec:
             memory: "1Gi"
             cpu: "500m"
           limits:
-            memory: "3Gi"  # Allow room for heavy image processing
+            memory: "3Gi"
             cpu: "1000m"
             
         envFrom:
         - configMapRef:
             name: tomato-config
         - secretRef:
-            name: tomato-secrets # Added Phase 1 Security Fix
+            name: tomato-secrets
 
-        # --- NEW: Worker Health Probes ---
-        # Since Celery has no port, we check the process list
         livenessProbe:
           exec:
             command:
             - pgrep
             - -f
             - celery
-          initialDelaySeconds: 30 # Give TF time to load models
+          initialDelaySeconds: 30 
           periodSeconds: 20
 
         volumeMounts:
-        - name: shared-storage
+        - name: shared-uploads
           mountPath: /app/uploads
-          subPath: active-sessions
-
+          # Same mount path as API to ensure code imports work
+      
       volumes:
-      - name: shared-storage
+      - name: shared-uploads
         persistentVolumeClaim:
-          claimName: tomato-pvc
+          # SENIOR FIX: Must match the API exactly to share the same disk
+          claimName: tomato-upload-pvc

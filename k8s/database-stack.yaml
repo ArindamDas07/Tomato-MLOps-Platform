@@ -1,16 +1,23 @@
-# --- 1. PERSISTENT STORAGE ---
+# --- 1. STORAGE ISOLATION ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: tomato-pvc
+  name: redis-pvc
 spec:
-  accessModes:
-    - ReadWriteOnce # Standard for Docker Desktop / Single Node
+  accessModes: [ReadWriteOnce]
   resources:
-    requests:
-      storage: 2Gi
+    requests: { storage: 512Mi }
 ---
-# --- 2. REDIS (Task Broker & Result Store) ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 1Gi }
+---
+# --- 2. REDIS (Task Broker) ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,46 +25,38 @@ metadata:
 spec:
   replicas: 1
   selector:
-    matchLabels:
-      app: redis
+    matchLabels: { app: redis }
   template:
     metadata:
-      labels:
-        app: redis
+      labels: { app: redis }
     spec:
       containers:
       - name: redis
         image: redis:7-alpine
-        command: ["redis-server", "--appendonly", "yes"] # Data Persistence enabled
-        ports:
-        - containerPort: 6379
+        command: ["redis-server", "--appendonly", "yes"]
+        ports: [{ containerPort: 6379 }]
         resources:
-          requests:
-            cpu: "100m"
-            memory: "64Mi"
-          limits:
-            cpu: "200m"
-            memory: "128Mi"
-        # Senior Move: Ensure Redis is actually ready before letting the API connect
+          requests: { cpu: "50m", memory: "64Mi" }
+          limits: { cpu: "100m", memory: "128Mi" }
         readinessProbe:
-          exec:
-            command: ["redis-cli", "ping"]
+          exec: { command: ["redis-cli", "ping"] }
           initialDelaySeconds: 5
-          periodSeconds: 5
         volumeMounts:
-        - name: shared-storage
+        - name: redis-data
           mountPath: /data
-          subPath: redis-data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim: { claimName: redis-pvc }
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: redis
 spec:
-  ports: [{port: 6379}]
-  selector: {app: redis}
+  ports: [{ port: 6379 }]
+  selector: { app: redis }
 ---
-# --- 3. REDIS EXPORTER (For Prometheus Metrics) ---
+# --- 3. REDIS EXPORTER (Missing Link for Prometheus) ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -65,12 +64,10 @@ metadata:
 spec:
   replicas: 1
   selector:
-    matchLabels:
-      app: redis-exporter
+    matchLabels: { app: redis-exporter }
   template:
     metadata:
-      labels:
-        app: redis-exporter
+      labels: { app: redis-exporter }
     spec:
       containers:
       - name: redis-exporter
@@ -78,22 +75,20 @@ spec:
         env:
         - name: REDIS_ADDR
           value: "redis:6379"
+        ports: [{ containerPort: 9121 }]
         resources:
-          requests:
-            cpu: "50m"
-            memory: "32Mi"
-        ports:
-        - containerPort: 9121
+          requests: { cpu: "20m", memory: "32Mi" }
+          limits: { cpu: "50m", memory: "64Mi" }
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis-exporter-service
+  name: redis-exporter-service # Must match prometheus.yml scrape target
 spec:
-  ports: [{port: 9121}]
-  selector: {app: redis-exporter}
+  ports: [{ port: 9121, targetPort: 9121 }]
+  selector: { app: redis-exporter }
 ---
-# --- 4. POSTGRES (MLflow Backend Store) ---
+# --- 4. POSTGRES (MLflow Store) ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -101,55 +96,40 @@ metadata:
 spec:
   replicas: 1
   selector:
-    matchLabels:
-      app: postgres
+    matchLabels: { app: postgres }
   template:
     metadata:
-      labels:
-        app: postgres
+      labels: { app: postgres }
     spec:
       containers:
       - name: postgres
         image: postgres:15
-        ports:
-        - containerPort: 5432
         env:
         - name: POSTGRES_DB
           value: "mlflowdb"
         - name: POSTGRES_USER
           value: "mlflowuser"
-        # Senior Fix: Pulling password from the Secret we defined in Phase 1
         - name: POSTGRES_PASSWORD
           valueFrom:
-            secretKeyRef:
-              name: tomato-secrets
-              key: POSTGRES_PASSWORD
+            secretKeyRef: { name: tomato-secrets, key: POSTGRES_PASSWORD }
+        ports: [{ containerPort: 5432 }]
         resources:
-          requests:
-            cpu: "100m"
-            memory: "128Mi"
-          limits:
-            cpu: "300m"
-            memory: "256Mi"
-        # Readiness Probe: MLflow server waits for this to pass
+          requests: { cpu: "100m", memory: "128Mi" }
+          limits: { cpu: "200m", memory: "256Mi" }
         readinessProbe:
-          exec:
-            command: ["pg_isready", "-U", "mlflowuser", "-d", "mlflowdb"]
+          exec: { command: ["pg_isready", "-U", "mlflowuser"] }
           initialDelaySeconds: 10
-          periodSeconds: 5
         volumeMounts:
-        - name: shared-storage
+        - name: pg-data
           mountPath: /var/lib/postgresql/data
-          subPath: postgres-data
       volumes:
-      - name: shared-storage
-        persistentVolumeClaim:
-          claimName: tomato-pvc
+      - name: pg-data
+        persistentVolumeClaim: { claimName: postgres-pvc }
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: postgres
 spec:
-  ports: [{port: 5432}]
-  selector: {app: postgres}
+  ports: [{ port: 5432 }]
+  selector: { app: postgres }
