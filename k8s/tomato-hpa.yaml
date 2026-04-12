@@ -1,6 +1,25 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
+  name: tomato-worker-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tomato-worker
+  minReplicas: 1
+  maxReplicas: 5 
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80 
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
   name: tomato-api-hpa
 spec:
   scaleTargetRef:
@@ -8,7 +27,7 @@ spec:
     kind: Deployment
     name: tomato-api
   minReplicas: 2
-  maxReplicas: 10 # Scale up to 10 pods during heavy traffic
+  maxReplicas: 10 
   metrics:
   - type: Resource
     resource:
