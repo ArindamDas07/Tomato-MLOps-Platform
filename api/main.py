@@ -23,18 +23,25 @@ REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")
 REDIS_DB_TASKS = os.getenv("REDIS_DB_TASKS", "0")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-UPLOAD_DIR = Path("/app/uploads")
+
+# Senior Fix: Allow UPLOAD_DIR to be overridden by environment (for testing/CI)
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/app/uploads"))
+BASE_DIR = Path(__file__).resolve().parent
 MAX_FILE_SIZE = 10 * 1024 * 1024 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Handles startup/shutdown. In production, we verify DB connectivity here.
+    Handles startup/shutdown. Ensures the upload directory is writable.
     """
-    logger.info("🚀 Starting Tomato API Gateway...")
-    UPLOAD_DIR.mkdir(exist_ok=True)
+    logger.info(f"🚀 Starting Tomato API Gateway (Storage: {UPLOAD_DIR})")
     
-    # Only perform the fatal health check if we aren't in a test environment
+    try:
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logger.error(f"Critical: Upload directory {UPLOAD_DIR} not writable: {e}")
+        # In CI, we might need a fallback, but in Prod, we want to know if disk mount failed.
+
     if os.getenv("ENV") != "testing":
         if not check_redis_health():
             logger.error("Could not establish Redis connection. Exiting.")
@@ -56,13 +63,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 @app.get("/")
 async def read_index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    # Senior Fix: Modern Starlette/FastAPI requires 'request' as the first positional argument
+    return templates.TemplateResponse(request, "index.html")
 
 @app.post('/upload')
 async def upload_image(file: UploadFile = File(...)):
@@ -84,7 +91,8 @@ async def upload_image(file: UploadFile = File(...)):
         
         task = celery_app.send_task("worker.gatekeeper", args=[user_id, str(file_path)])
         return {"user_id": user_id, "task_id": task.id}
-    except Exception:
+    except Exception as e:
+        logger.error(f"Upload failed for {user_id}: {e}")
         if user_folder.exists():
             shutil.rmtree(user_folder)
         raise HTTPException(status_code=500, detail="Upload failed")

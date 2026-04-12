@@ -5,40 +5,33 @@ from worker.utils import calculate_drift, TRAINING_BASELINES
 def test_calculate_drift_math():
     """
     SENIOR TEST: Proves that the drift percentage formula is correct.
-    If the training baseline for brightness is 100, and our image is 110,
-    the drift must be exactly 10.0%.
+    Using float32 dummy image so pixels can match the baseline (116.536) exactly.
     """
-    # 1. Create a fake image array (224x224x3) where every pixel is 116.536
-    # (Matches the training baseline exactly)
     baseline_val = TRAINING_BASELINES["brightness"]
-    perfect_image = np.full((224, 224, 3), baseline_val, dtype=np.uint8)
+    # Senior Fix: Use float32 to avoid uint8 rounding errors in tests
+    perfect_image = np.full((224, 224, 3), baseline_val, dtype=np.float32)
     
     stats, drift = calculate_drift(perfect_image)
     
     # Drift should be 0.0% if the image matches the baseline
-    assert drift["drift_brightness_pct"] == pytest.approx(0.0, abs=1e-2)
+    assert drift["drift_brightness_pct"] == pytest.approx(0.0, abs=1e-5)
 
 def test_calculate_drift_high_deviation():
     """
-    Tests that the system correctly identifies very bright images (+100% drift).
+    Tests that the system correctly identifies +100% drift.
     """
     baseline_val = TRAINING_BASELINES["brightness"]
-    # Create an image twice as bright as the baseline
-    bright_val = baseline_val * 2
-    bright_image = np.full((224, 224, 3), bright_val, dtype=np.uint8)
+    # Image twice as bright as the baseline
+    bright_image = np.full((224, 224, 3), baseline_val * 2, dtype=np.float32)
     
     stats, drift = calculate_drift(bright_image)
     
-    # Should report 100% drift
-    assert drift["drift_brightness_pct"] == pytest.approx(100.0, abs=1e-2)
+    assert drift["drift_brightness_pct"] == pytest.approx(100.0, abs=1e-5)
 
 def test_calculate_drift_channels():
-    """
-    Ensures that R, G, and B channel drift are calculated independently.
-    """
-    # Create an image that is ONLY red
-    red_image = np.zeros((224, 224, 3), dtype=np.uint8)
-    red_image[:, :, 0] = 255 # Max Red
+    """Ensures R, G, and B channel drift calculations are accurate."""
+    red_image = np.zeros((224, 224, 3), dtype=np.float32)
+    red_image[:, :, 0] = 255.0 # Max Red
     
     stats, drift = calculate_drift(red_image)
     
