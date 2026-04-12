@@ -9,7 +9,6 @@ const uploadBtn = document.getElementById("upload-btn");
 
 let currentUserId = null;
 
-// Utility: A "Sleep" function to handle delays in async loops
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // STEP 1: RESET & CHOOSE FILE
@@ -46,7 +45,6 @@ imageInput.onchange = async () => {
         const data = await response.json();
         currentUserId = data.user_id;
         
-        // Start Smart Polling for Gatekeeper
         await pollService(`/leaf_checker/${data.user_id}/${data.task_id}`, handleGatekeeperResult);
         
     } catch (err) {
@@ -55,13 +53,13 @@ imageInput.onchange = async () => {
 };
 
 // STEP 3: SMART POLLING ENGINE
-async function pollService(endpoint, successCallback, maxRetries = 30) {
+async function pollService(endpoint, successCallback, maxRetries = 40) {
     let retries = 0;
-    let waitTime = 1500; 
-
     while (retries < maxRetries) {
         try {
             const res = await fetch(endpoint);
+            if (!res.ok) throw new Error("Server communication error");
+            
             const data = await res.json();
 
             if (data.status === "done" || data.status === "error") {
@@ -70,10 +68,11 @@ async function pollService(endpoint, successCallback, maxRetries = 30) {
             }
 
             retries++;
-            await delay(waitTime + (retries * 50)); 
+            // Linear Backoff
+            await delay(1500 + (retries * 50)); 
             
         } catch (e) {
-            console.error("Polling error:", e);
+            console.error("Polling error caught:", e);
             showError("Service connection lost.");
             return;
         }
@@ -95,8 +94,8 @@ function handleFinalResult(data) {
     if (data.status === "done" && data.prediction) {
         statusDiv.innerText = "Classification Complete";
         
-        // SENIOR FIX: 'data.prediction' is already a JSON object. 
-        // We removed JSON.parse to prevent a crash.
+        // SENIOR FIX: 'data.prediction' is already a JSON object from FastAPI.
+        // We removed JSON.parse() to prevent the code from crashing.
         const prediction = data.prediction; 
         
         document.getElementById("disease").innerText = prediction.disease;
@@ -121,7 +120,6 @@ predictBtn.onclick = async () => {
         const response = await fetch(`/predict/${currentUserId}`, { method: "POST" });
         const data = await response.json();
         
-        // Start Smart Polling for Final Result
         await pollService(`/result/${currentUserId}/${data.task_id}`, handleFinalResult);
     } catch (err) {
         showError("Prediction request failed.");

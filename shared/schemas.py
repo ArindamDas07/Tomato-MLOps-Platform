@@ -2,33 +2,26 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 class InferenceResult(BaseModel):
-    """
-    Standardized Schema for AI Model outputs.
-    This is the 'Contract' that ensures the Worker sends exactly 
-    what the API expects.
-    """
-    disease: str = Field(
-        ..., 
-        description="The name of the detected tomato leaf disease",
-        example="Late_blight"
-    )
-    confidence: float = Field(
-        ..., 
-        description="Confidence score as a percentage (0.0 - 100.0)",
-        example=95.42
-    )
-    model: str = Field(
-        ..., 
-        description="Identifier of the model used (e.g., 'resnet' or 'efficient')",
-        example="efficient"
-    )
+    """The standardized response format for AI predictions."""
+    disease: str = Field(..., description="Detected disease name")
+    confidence: float = Field(..., description="Confidence percentage (0-100)")
+    model: str = Field(..., description="Model used (resnet/efficient)")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "disease": "Late_blight",
+                    "confidence": 95.42,
+                    "model": "efficient"
+                }
+            ]
+        }
+    }
 
 class TaskResponse(BaseModel):
-    """
-    Standardized Schema for the Gateway polling endpoints.
-    Used for /leaf_checker and /result endpoints.
-    """
-    status: str = Field(..., description="Current state: processing | done | error")
-    valid: Optional[bool] = Field(None, description="True if a tomato leaf was detected")
-    message: Optional[str] = Field(None, description="Error or status message")
-    prediction: Optional[InferenceResult] = Field(None, description="The final AI prediction result")
+    """Standardized response for polling endpoints."""
+    status: str = Field(..., description="processing | done | error")
+    valid: Optional[bool] = None
+    message: Optional[str] = None
+    prediction: Optional[InferenceResult] = None

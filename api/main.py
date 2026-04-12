@@ -14,38 +14,31 @@ import os
 import json
 import sys
 
-# --- Contract Imports ---
+# Contract Imports
 from shared.redis_conn import redis_client, check_redis_health
-from shared.schemas import InferenceResult 
+from shared.schemas import InferenceResult, TaskResponse 
 
 # -------------------- Config --------------------
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")
 REDIS_DB_TASKS = os.getenv("REDIS_DB_TASKS", "0")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-
-# Senior Fix: Allow UPLOAD_DIR to be overridden by environment (for testing/CI)
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/app/uploads"))
 BASE_DIR = Path(__file__).resolve().parent
-MAX_FILE_SIZE = 10 * 1024 * 1024 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Handles startup/shutdown. Ensures the upload directory is writable.
-    """
+    """Handles startup logic and directory creation."""
     logger.info(f"🚀 Starting Tomato API Gateway (Storage: {UPLOAD_DIR})")
-    
     try:
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        logger.error(f"Critical: Upload directory {UPLOAD_DIR} not writable: {e}")
+        logger.error(f"Critical: Upload directory not writable: {e}")
 
     if os.getenv("ENV") != "testing":
         if not check_redis_health():
             logger.error("Could not establish Redis connection. Exiting.")
             sys.exit(1)
-            
     yield
     logger.info("🛑 Shutting down...")
 
@@ -67,16 +60,12 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 @app.get("/")
 async def read_index(request: Request):
-    # Senior Fix: Modern Starlette/FastAPI requires 'request' as the first positional argument
     return templates.TemplateResponse(request, "index.html")
 
 @app.post('/upload')
 async def upload_image(file: UploadFile = File(...)):
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="Only images allowed")
-    
-    if file.size > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large")
     
     user_id = str(uuid.uuid4())
     user_folder = UPLOAD_DIR / user_id
@@ -91,26 +80,25 @@ async def upload_image(file: UploadFile = File(...)):
         task = celery_app.send_task("worker.gatekeeper", args=[user_id, str(file_path)])
         return {"user_id": user_id, "task_id": task.id}
     except Exception as e:
-        logger.error(f"Upload failed for {user_id}: {e}")
+        logger.error(f"Upload failed: {e}")
         if user_folder.exists():
             shutil.rmtree(user_folder)
         raise HTTPException(status_code=500, detail="Upload failed")
 
-@app.get('/leaf_checker/{user_id}/{task_id}')
+@app.get('/leaf_checker/{user_id}/{task_id}', response_model=TaskResponse)
 async def check_leaf(user_id: str, task_id: str):
     try:
         result = redis_client.get(task_id)
-        if result:
-            if result == "tomato":
-                return {"status": "done", "valid": True}
-            else:
-                user_folder = UPLOAD_DIR / user_id
-                if user_folder.exists():
-                    shutil.rmtree(user_folder)
-                return {"status": "done", "valid": False, "message": "Not a tomato leaf"}
-        return {"status": "processing"}
+        if result == "tomato":
+            return TaskResponse(status="done", valid=True)
+        elif result == "invalid":
+            user_folder = UPLOAD_DIR / user_id
+            if user_folder.exists():
+                shutil.rmtree(user_folder)
+            return TaskResponse(status="done", valid=False, message="Not a tomato leaf")
+        return TaskResponse(status="processing")
     except Exception:
-        return {"status": "error", "message": "Redis error"}
+        return TaskResponse(status="error", message="Redis error")
 
 @app.post('/predict/{user_id}')
 async def trigger_prediction(user_id: str):
@@ -123,23 +111,24 @@ async def trigger_prediction(user_id: str):
     except Exception:
         raise HTTPException(status_code=503, detail="Worker overloaded")
 
-@app.get('/result/{user_id}/{task_id}')
+@app.get('/result/{user_id}/{task_id}', response_model=TaskResponse)
 async def get_final_result(user_id: str, task_id: str):
     try:
         raw_result = redis_client.get(task_id)
         if raw_result:
-            # Result from Redis is a JSON string, convert to dict
-            prediction_json = json.loads(raw_result)
-            # Validate via Schema
-            validated_result = InferenceResult(**prediction_json)
+            # Result in Redis is a JSON string, convert it to a dict
+            prediction_data = json.loads(raw_result)
+            # Validate dict into InferenceResult object
+            validated_inference = InferenceResult(**prediction_data)
             
+            # Clean up the disk storage
             user_folder = UPLOAD_DIR / user_id
             if user_folder.exists():
                 shutil.rmtree(user_folder)
-                
-            # Returns the validated result as a JSON object
-            return {"status": "done", "prediction": validated_result}
-        return {"status": "processing"}
+            
+            return TaskResponse(status="done", prediction=validated_inference)
+            
+        return TaskResponse(status="processing")
     except Exception as e:
-        logger.error(f"Parsing error: {e}")
-        return {"status": "error", "message": "Parsing error"}
+        logger.error(f"Data parsing error: {e}")
+        return TaskResponse(status="error", message="Processing result failed")
