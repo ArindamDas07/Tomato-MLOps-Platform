@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tomato-network-isolation
+spec:
+  podSelector: {} # Apply to all pods in the namespace
+  policyTypes: [Ingress]
+  ingress:
+  # 1. Allow Nginx to talk to API
+  - from:
+    - podSelector: { matchLabels: { app: nginx } }
+    podSelector: { matchLabels: { app: tomato-api } }
+
+  # 2. Allow API and Worker to talk to Redis
+  - from:
+    - podSelector: { matchLabels: { app: tomato-api } }
+    - podSelector: { matchLabels: { app: tomato-worker } }
+    podSelector: { matchLabels: { app: redis } }
+
+  # 3. Allow Worker and MLflow to talk to Postgres
+  - from:
+    - podSelector: { matchLabels: { app: tomato-worker } }
+    - podSelector: { matchLabels: { app: mlflow } }
+    podSelector: { matchLabels: { app: postgres } }
+
+  # 4. Allow Prometheus to scrape everyone
+  - from:
+    - podSelector: { matchLabels: { component: monitoring } }

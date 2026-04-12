@@ -13,41 +13,40 @@ spec:
         app: tomato-worker
     spec:
       imagePullSecrets: [{name: github-auth}]
+      
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+
       containers:
       - name: tomato-worker
         image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
-        imagePullPolicy: IfNotPresent 
         
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsUser: 1000
+
         resources:
-          requests:
-            memory: "1Gi"
-            cpu: "500m"
-          limits:
-            memory: "3Gi"
-            cpu: "1000m"
+          requests: { memory: "1Gi", cpu: "500m" }
+          limits: { memory: "3Gi", cpu: "1000m" }
             
         envFrom:
-        - configMapRef:
-            name: tomato-config
-        - secretRef:
-            name: tomato-secrets
+        - configMapRef: { name: tomato-config }
+        - secretRef: { name: tomato-secrets }
 
         livenessProbe:
-          exec:
-            command:
-            - pgrep
-            - -f
-            - celery
+          exec: { command: ["pgrep", "-f", "celery"] }
           initialDelaySeconds: 30 
-          periodSeconds: 20
 
         volumeMounts:
         - name: shared-uploads
           mountPath: /app/uploads
-          # Same mount path as API to ensure code imports work
+        - name: tmp-volume
+          mountPath: /tmp
       
       volumes:
       - name: shared-uploads
-        persistentVolumeClaim:
-          # SENIOR FIX: Must match the API exactly to share the same disk
-          claimName: tomato-upload-pvc
+        persistentVolumeClaim: { claimName: tomato-upload-pvc }
+      - name: tmp-volume
+        emptyDir: {}

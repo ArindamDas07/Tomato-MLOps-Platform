@@ -12,46 +12,47 @@ spec:
       labels:
         app: tomato-api
     spec:
-      # Use the secret for pulling images from GHCR
       imagePullSecrets: [{name: github-auth}]
+      
+      # --- SENIOR SECURITY CONTEXT (Pod Level) ---
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+
       containers:
       - name: tomato-api
         image: ghcr.io/arindamdas07/tomato-mlops-platform-api:latest
         
+        # --- SENIOR SECURITY CONTEXT (Container Level) ---
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true  # The 'Iron Cage'
+          runAsUser: 1000
+
         resources:
-          requests:
-            cpu: "100m"
-            memory: "256Mi"
-          limits:
-            cpu: "500m"
-            memory: "512Mi"
+          requests: { cpu: "100m", memory: "256Mi" }
+          limits: { cpu: "500m", memory: "512Mi" }
 
         readinessProbe:
-          httpGet:
-            path: /
-            port: 8000
+          httpGet: { path: /health, port: 8000 }
           initialDelaySeconds: 10
-          periodSeconds: 5
         livenessProbe:
-          httpGet:
-            path: /
-            port: 8000
+          httpGet: { path: /health, port: 8000 }
           initialDelaySeconds: 15
-          periodSeconds: 10
 
         envFrom:
-        - configMapRef:
-            name: tomato-config
-        - secretRef:
-            name: tomato-secrets
+        - configMapRef: { name: tomato-config }
+        - secretRef: { name: tomato-secrets }
             
         volumeMounts:
         - name: shared-uploads
           mountPath: /app/uploads
-          # We mount the root of our new dedicated PVC
+        # Exception for ReadOnlyRootFilesystem: Allow writing to /tmp
+        - name: tmp-volume
+          mountPath: /tmp
       
       volumes:
       - name: shared-uploads
-        persistentVolumeClaim:
-          # SENIOR FIX: Points to the dedicated storage bridge
-          claimName: tomato-upload-pvc
+        persistentVolumeClaim: { claimName: tomato-upload-pvc }
+      - name: tmp-volume
+        emptyDir: {}
