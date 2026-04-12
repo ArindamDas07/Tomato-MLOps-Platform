@@ -4,9 +4,10 @@ redis==5.0.1
 python-dotenv==1.0.0
 loguru==0.7.2
 
-# --- Monitoring & Drift ---
+# --- Monitoring & Model Registry ---
 mlflow==2.12.1
 prometheus-client==0.20.0
+# psycopg2 is required for the worker to talk to the MLflow Postgres backend
 psycopg2-binary==2.9.9
 
 # --- Deep Learning Stack ---

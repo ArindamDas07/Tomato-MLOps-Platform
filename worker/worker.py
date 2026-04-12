@@ -4,7 +4,7 @@ from worker.utils import get_raw_array, preprocess, calculate_drift
 from worker.metrics import log_inference_result, log_gatekeeper_result, push_metrics
 from shared.redis_conn import redis_client, RESULT_TTL 
 from shared.schemas import InferenceResult
-import random
+import hashlib # Senior Move: Standard library for deterministic logic
 import time
 import socket
 import shutil
@@ -56,6 +56,9 @@ def task_gatekeeper(self, user_id: str, image_path: str):
 
 @celery_app.task(bind=True, name="worker.classifier")
 def task_classifier(self, user_id: str, image_path: str):
+    """
+    Inference task with deterministic A/B testing via User ID hashing.
+    """
     start_time = time.time()
     worker_name = socket.gethostname()
     img_file = Path(image_path)
@@ -65,16 +68,22 @@ def task_classifier(self, user_id: str, image_path: str):
         return
 
     try:
-        model_name = "efficient" if random.random() < 0.7 else "resnet"
+        # --- SENIOR MOVE: Deterministic Hashing ---
+        # Instead of random, we hash the user_id to get a consistent assignment.
+        # EfficientNet: 70% | ResNet: 30%
+        user_hash = int(hashlib.md5(user_id.encode()).hexdigest(), 16) % 100
+        model_name = "efficient" if user_hash < 70 else "resnet"
+        
         model = TomatoModelSuite.load_model(model_name=model_name)
+        
         arr = get_raw_array(str(img_file))
         stats, data_drift = calculate_drift(arr)
         image = preprocess(arr, model_name=model_name)
         score = model.predict(image, verbose=0)
         
         index = int(np.argmax(score))
-        confidence = float(np.max(score))
         disease_label = CLASS_LABELS[index]
+        confidence = float(np.max(score))
         
         result_obj = InferenceResult(
             disease=disease_label,
@@ -84,9 +93,13 @@ def task_classifier(self, user_id: str, image_path: str):
         
         latency = round(time.time() - start_time, 3)
         log_inference_result(user_id, model_name, disease_label, confidence, stats, data_drift, latency)
+        
+        # Consistent with Phase 1 Fix: Saving JSON-serialized schema
         redis_client.setex(self.request.id, RESULT_TTL, result_obj.model_dump_json())
         
         push_metrics(worker_name)
+        logger.success(f"Task complete: User {user_id} -> {model_name}")
+
     except Exception as e:
         logger.exception(f"Inference failure for {user_id}")
         raise e

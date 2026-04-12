@@ -1,4 +1,4 @@
-# --- API Dependencies ---
+# --- Combined API & Worker Dependencies ---
 fastapi==0.110.0
 uvicorn[standard]==0.27.1
 python-dotenv==1.0.0
@@ -11,8 +11,6 @@ python-multipart==0.0.9
 aiofiles==24.1.0
 Jinja2==3.1.3
 httpx==0.27.0
-
-# --- Worker Dependencies ---
 tensorflow-cpu==2.14.0
 numpy==1.26.4
 pillow==10.4.0
