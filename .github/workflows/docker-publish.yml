@@ -15,7 +15,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          lfs: true 
+          # THE EMERGENCY FIX: STOP BANDWIDTH BLEED
+          lfs: false 
 
       # --- NEW: This step converts your username to lowercase ---
       - name: Lowercase Registry Address
@@ -38,7 +39,6 @@ jobs:
           context: .
           file: ./api/Dockerfile.api
           push: true
-          # --- FIXED: Now using the lowercase IMAGE_OWNER variable ---
           tags: ghcr.io/${{ env.IMAGE_OWNER }}/tomato-mlops-platform-api:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
@@ -48,6 +48,5 @@ jobs:
           context: .
           file: ./worker/Dockerfile.worker
           push: true
-          # --- FIXED: Now using the lowercase IMAGE_OWNER variable ---
           tags: ghcr.io/${{ env.IMAGE_OWNER }}/tomato-mlops-platform-worker:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}

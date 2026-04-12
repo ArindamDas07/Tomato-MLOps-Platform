@@ -15,12 +15,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # THE EMERGENCY FIX: STOP BANDWIDTH BLEED
+          lfs: false 
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          # THE FIX: Tell GitHub which file to use for caching
           cache: 'pip'
           cache-dependency-path: 'requirements-test.txt'
 
@@ -30,24 +32,23 @@ jobs:
           pip install -r requirements-test.txt
 
       - name: Lint Check (Ruff)
-        # We use 'continue-on-error: false' (default) to ensure it fails the build if code is messy
         run: ruff check .
 
       - name: Run Automated Tests
-        # We use -v for verbose output so we can see exactly which tests pass in the logs
         run: |
           export PYTHONPATH=$PYTHONPATH:.
           pytest -v tests/
 
   # --- STAGE 2: PROTECTED BUILD & PUSH ---
   build-and-push:
-    needs: test-and-lint # ONLY runs if tests pass
+    needs: test-and-lint 
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          lfs: true 
+          # THE EMERGENCY FIX: STOP BANDWIDTH BLEED
+          lfs: false 
 
       - name: Lowercase Registry Address
         run: |
