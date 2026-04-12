@@ -14,7 +14,7 @@ import os
 import json
 
 # --- Contract Imports ---
-from shared.redis_conn import redis_client, RESULT_TTL
+from shared.redis_conn import redis_client
 from shared.schemas import InferenceResult 
 
 # -------------------- Config & Paths --------------------
@@ -25,7 +25,6 @@ ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = Path("/app/uploads")
-# Senior Move: Define constants for limits
 MAX_FILE_SIZE = 10 * 1024 * 1024 # 10MB limit
 
 # -------------------- Lifespan Management --------------------
@@ -61,16 +60,14 @@ async def read_index(request: Request):
 # --- STEP 1: UPLOAD ---
 @app.post('/upload')
 async def upload_image(file: UploadFile = File(...)):
-    # 1. Type Validation
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="Only images allowed")
     
-    # 2. Senior Move: Size Validation (Defense in Depth)
     if file.size > MAX_FILE_SIZE:
         logger.warning(f"Rejected upload: File too large ({file.size} bytes)")
         raise HTTPException(
             status_code=413, 
-            detail=f"File too large. Maximum size allowed is {MAX_FILE_SIZE // (1024*1024)}MB"
+            detail=f"File too large. Max allowed is {MAX_FILE_SIZE // (1024*1024)}MB"
         )
     
     user_id = str(uuid.uuid4())
@@ -86,7 +83,6 @@ async def upload_image(file: UploadFile = File(...)):
         
         try:
             task = celery_app.send_task("worker.gatekeeper", args=[user_id, str(file_path)])
-            logger.info(f"User {user_id} | Upload successful | TaskID: {task.id}")
             return {"user_id": user_id, "task_id": task.id}
         except Exception as celery_err:
             logger.error(f"Broker Error: {celery_err}")
@@ -94,7 +90,7 @@ async def upload_image(file: UploadFile = File(...)):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         if user_folder.exists():
             shutil.rmtree(user_folder)
         logger.exception(f"Upload failed for user {user_id}")
@@ -112,12 +108,10 @@ async def check_leaf(user_id: str, task_id: str):
                 user_folder = UPLOAD_DIR / user_id
                 if user_folder.exists():
                     shutil.rmtree(user_folder)
-                logger.warning(f"User {user_id} | Rejected by Gatekeeper")
                 return {"status": "done", "valid": False, "message": "Not a tomato leaf"}
         
         return {"status": "processing"}
-    except Exception as e:
-        logger.error(f"Polling error: {e}")
+    except Exception:
         return {"status": "error", "message": "Connection flickering"}
 
 # --- STEP 3: PREDICT ---
@@ -140,19 +134,15 @@ async def get_final_result(user_id: str, task_id: str):
     try:
         raw_result = redis_client.get(task_id)
         if raw_result:
-            # Parse and Validate via the Shared Contract
             prediction_json = json.loads(raw_result)
             validated_result = InferenceResult(**prediction_json)
             
-            # Final Disk Cleanup after successful fetch
             user_folder = UPLOAD_DIR / user_id
             if user_folder.exists():
                 shutil.rmtree(user_folder)
-                logger.info(f"Disk storage cleared for user {user_id}")
 
             return {"status": "done", "prediction": validated_result}
             
         return {"status": "processing"}
-    except Exception as e:
-        logger.error(f"Result retrieval failed: {e}")
+    except Exception:
         return {"status": "error", "message": "Data parsing error"}
