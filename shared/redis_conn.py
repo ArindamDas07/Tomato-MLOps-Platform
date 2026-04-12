@@ -5,45 +5,48 @@ from loguru import logger
 
 def get_redis_client() -> redis.Redis:
     """
-    Creates and validates a Redis connection pool.
-    Using a function-based approach allows for better testing and error handling.
+    Creates and validates a robust Redis connection pool.
+    Optimized for high-concurrency MLOps workloads and Kubernetes scaling.
     """
     try:
-        host = os.getenv("REDIS_HOST", "localhost")
+        # Load config from Environment (Injected by K8s ConfigMap)
+        host = os.getenv("REDIS_HOST", "redis")
         port = int(os.getenv("REDIS_PORT", 6379))
         db = int(os.getenv("REDIS_DB_APP", 2))
 
-        # 1. Initialize Connection Pool
+        # 1. Initialize High-Concurrency Connection Pool
+        # We increase max_connections to 50 to support multiple API replicas and Workers
         pool = redis.ConnectionPool(
             host=host,
             port=port,
             db=db,
             decode_responses=True,
-            max_connections=20,
-            # Senior Move: socket_timeout prevents the API from hanging forever 
-            # if the network is flaky
-            socket_timeout=5.0 
+            max_connections=50, 
+            # socket_timeout: prevents the process from hanging if Redis is overloaded
+            socket_timeout=5.0,
+            # health_check_interval: automatically detects and drops dead connections
+            health_check_interval=30 
         )
 
         client = redis.Redis(connection_pool=pool)
 
         # 2. Connection Health Check (The "Senior" Ping)
-        # We try to ping Redis. If it fails, we catch it now, not during a user request.
+        # Ensuring the circuit is closed before the app starts accepting traffic
         client.ping()
-        logger.info(f"Successfully connected to Redis at {host}:{port}/db {db}")
+        logger.info(f"✅ Shared Redis Link Established: {host}:{port}/db-{db}")
         return client
 
     except redis.ConnectionError as e:
-        logger.error(f"FATAL: Could not connect to Redis: {e}")
-        # In a production K8s environment, we exit. 
-        # K8s will see the 'CrashLoopBackOff' and try to restart us.
+        logger.error(f"❌ FATAL: Redis Connection Failure: {e}")
+        # Crash immediately so K8s can restart the pod (Fail-fast principle)
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Unexpected error initializing Redis: {e}")
+        logger.error(f"❌ Unexpected Error in Redis Client: {e}")
         sys.exit(1)
 
-# Initialize the global client
+# Initialize the global client used by both API and Worker
 redis_client = get_redis_client()
 
-# Senior Tip: We will use this TTL value in our main.py later
+# Result TTL (Time To Live): Defaulting to 1 hour (3600s)
+# This is crucial for preventing memory leaks in Redis.
 RESULT_TTL = int(os.getenv("RESULT_TTL", 3600))

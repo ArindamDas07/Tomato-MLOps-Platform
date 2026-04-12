@@ -5,51 +5,65 @@ import re
 from pathlib import Path
 from loguru import logger
 
-# In K8s, /app/uploads IS the 'active-sessions' folder because of subPath
+# In K8s, /app/uploads is the shared volume mount point
 CLEANUP_TARGET = Path("/app/uploads")
-# 2 Hours is a safe bet for MLOps. Most tasks finish in < 2 seconds.
-MAX_AGE_SECONDS = 3600 * 2 
 
-# Senior Move: Use Regex to ensure we only delete UUID folders
-# This prevents the janitor from accidentally deleting system files
+# Senior Move: Ensuring we only touch folders created by our UUID logic.
+# This prevents accidental deletion of system files or hidden mount metadata.
 UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
+# We consider a session "abandoned" if no activity for 2 hours.
+MAX_AGE_SECONDS = 3600 * 2 
+
 def clean_stale_folders():
+    """
+    Scans the shared volume and removes session folders that were not 
+    cleaned up by the API (e.g., due to browser shutdown or network loss).
+    """
     now = time.time()
     logger.info("🧹 Janitor: Starting hygiene check...")
     
     if not CLEANUP_TARGET.exists():
-        logger.warning(f"⚠️ Janitor: Target path {CLEANUP_TARGET} does not exist.")
+        logger.warning(f"⚠️ Janitor: Target path {CLEANUP_TARGET} is missing. Check K8s VolumeMounts.")
         return
 
-    count = 0
-    # Use .iterdir() for memory efficiency
+    purged_count = 0
+    skipped_count = 0
+
+    # Using .iterdir() is more memory-efficient than os.listdir() for large volumes
     for user_folder in CLEANUP_TARGET.iterdir():
-        # 1. Safety Check: Is it a directory?
-        if not user_folder.is_dir():
-            continue
-
-        # 2. Safety Check: Does the folder name look like a User UUID?
-        if not UUID_PATTERN.match(user_folder.name):
-            logger.debug(f"⏭️ Janitor: Skipping non-session folder: {user_folder.name}")
-            continue
-
-        # 3. Calculate age based on Last Modified Time
         try:
-            folder_age = now - user_folder.stat().st_mtime
-            
-            if folder_age > MAX_AGE_SECONDS:
-                # Senior Tip: Log exactly what is being deleted for audit trails
-                shutil.rmtree(user_folder)
-                logger.info(f"♻️ Janitor: Purged stale session: {user_folder.name} (Age: {int(folder_age/60)} mins)")
-                count += 1
+            # 1. Safety Check: Is it a directory and does it match our naming convention?
+            if not user_folder.is_dir():
+                continue
+
+            if not UUID_PATTERN.match(user_folder.name):
+                logger.debug(f"⏭️ Janitor: Skipping non-session folder: {user_folder.name}")
+                skipped_count += 1
+                continue
+
+            # 2. Age Check: How long since the folder was last modified?
+            # We wrap this in a sub-try because the folder could be deleted 
+            # by the API /result call exactly now (Race Condition).
+            try:
+                folder_age = now - user_folder.stat().st_mtime
+                
+                if folder_age > MAX_AGE_SECONDS:
+                    shutil.rmtree(user_folder)
+                    logger.info(f"♻️ Janitor: Purged abandoned session: {user_folder.name} (Age: {int(folder_age/60)} mins)")
+                    purged_count += 1
+            except FileNotFoundError:
+                # API deleted it already, this is a 'good' race condition.
+                continue
+
         except Exception as e:
-            logger.error(f"❌ Janitor: Failed to delete {user_folder.name}: {e}")
+            logger.error(f"❌ Janitor encountered an error processing {user_folder.name}: {e}")
+            continue
     
-    if count > 0:
-        logger.success(f"🧹 Janitor: Hygiene check finished. Purged {count} folders.")
+    if purged_count > 0:
+        logger.success(f"🧹 Janitor: Finished. Purged {purged_count} folders. (Ignored {skipped_count} system folders)")
     else:
-        logger.info("🧹 Janitor: Hygiene check finished. Everything is clean.")
+        logger.info("🧹 Janitor: Hygiene check finished. Volume is clean.")
 
 if __name__ == "__main__":
     clean_stale_folders()
