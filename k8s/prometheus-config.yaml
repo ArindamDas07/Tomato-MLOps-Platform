@@ -9,6 +9,7 @@ data:
       scrape_timeout: 9s
 
     scrape_configs:
+      # DYNAMIC API DISCOVERY (For Auto-scaling)
       - job_name: 'tomato-api'
         kubernetes_sd_configs:
           - role: pod
@@ -24,11 +25,13 @@ data:
             replacement: $1:8000
             target_label: __address__
 
+      # PUSHGATEWAY (For Worker Metrics)
       - job_name: 'pushgateway'
         honor_labels: true  
         static_configs:
           - targets: ['localhost:9091']
 
+      # REDIS MONITORING
       - job_name: 'redis'
         static_configs:
           - targets: ['redis-exporter-service:9121']

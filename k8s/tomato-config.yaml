@@ -5,27 +5,19 @@ metadata:
   labels:
     app: tomato-mlops
 data:
-  # --- Infrastructure Addresses ---
-  # These match the Service names in your database-stack.yaml
   REDIS_HOST: "redis"
   REDIS_PORT: "6379"
   POSTGRES_HOST: "postgres"
   
-  # --- Redis Database Mapping ---
-  REDIS_DB_TASKS: "0"   # Celery Broker
-  REDIS_DB_RESULTS: "1" # Celery Backend
-  REDIS_DB_APP: "2"     # Application Contract Storage
+  REDIS_DB_TASKS: "0"
+  REDIS_DB_RESULTS: "1"
+  REDIS_DB_APP: "2"
   
-  # --- MLOps Endpoints ---
-  # Matches the Service names in mlflow-setup and monitoring-stack
   MLFLOW_URI: "http://mlflow:5000"
+  # THE FIX: Points to the service name we defined in monitoring-stack
   PUSHGATEWAY: "http://pushgateway-service:9091"
   
-  # --- Application Logic ---
-  # Senior Fix: 1 hour expiry to prevent Redis memory leaks
   RESULT_TTL: "3600" 
-  # Security: Restricted origins (Update this if you have a real domain)
   ALLOWED_ORIGINS: "*" 
-  # Path for shared storage inside the container
   UPLOAD_DIR: "/app/uploads"
   ENV: "production"

@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         logger.error(f"Critical: Upload directory {UPLOAD_DIR} not writable: {e}")
-        # In CI, we might need a fallback, but in Prod, we want to know if disk mount failed.
 
     if os.getenv("ENV") != "testing":
         if not check_redis_health():
@@ -129,12 +128,18 @@ async def get_final_result(user_id: str, task_id: str):
     try:
         raw_result = redis_client.get(task_id)
         if raw_result:
+            # Result from Redis is a JSON string, convert to dict
             prediction_json = json.loads(raw_result)
+            # Validate via Schema
             validated_result = InferenceResult(**prediction_json)
+            
             user_folder = UPLOAD_DIR / user_id
             if user_folder.exists():
                 shutil.rmtree(user_folder)
+                
+            # Returns the validated result as a JSON object
             return {"status": "done", "prediction": validated_result}
         return {"status": "processing"}
-    except Exception:
+    except Exception as e:
+        logger.error(f"Parsing error: {e}")
         return {"status": "error", "message": "Parsing error"}

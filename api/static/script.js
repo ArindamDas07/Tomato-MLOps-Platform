@@ -55,10 +55,9 @@ imageInput.onchange = async () => {
 };
 
 // STEP 3: SMART POLLING ENGINE
-// This is a generic "Senior" function that can poll ANY endpoint
 async function pollService(endpoint, successCallback, maxRetries = 30) {
     let retries = 0;
-    let waitTime = 1500; // Start with 1.5 seconds
+    let waitTime = 1500; 
 
     while (retries < maxRetries) {
         try {
@@ -67,13 +66,10 @@ async function pollService(endpoint, successCallback, maxRetries = 30) {
 
             if (data.status === "done" || data.status === "error") {
                 successCallback(data);
-                return; // Stop polling
+                return; 
             }
 
-            // If still processing, wait and try again
             retries++;
-            // Senior Tip: "Linear Backoff" - wait a bit longer each time
-            // to give the server room to breathe
             await delay(waitTime + (retries * 50)); 
             
         } catch (e) {
@@ -96,9 +92,12 @@ function handleGatekeeperResult(data) {
 }
 
 function handleFinalResult(data) {
-    if (data.status === "done") {
+    if (data.status === "done" && data.prediction) {
         statusDiv.innerText = "Classification Complete";
-        const prediction = JSON.parse(data.prediction); 
+        
+        // SENIOR FIX: 'data.prediction' is already a JSON object. 
+        // We removed JSON.parse to prevent a crash.
+        const prediction = data.prediction; 
         
         document.getElementById("disease").innerText = prediction.disease;
         document.getElementById("confidence").innerText = prediction.confidence;

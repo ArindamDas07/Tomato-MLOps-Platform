@@ -1,4 +1,33 @@
-# --- PVC for Monitoring Data ---
+# --- 1. PERMISSIONS (RBAC) ---
+# Required for Dynamic Pod Discovery
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-sa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-rbac
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-sa
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: prometheus-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# --- 2. PVC FOR MONITORING ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -8,7 +37,7 @@ spec:
   resources:
     requests: { storage: 1Gi }
 ---
-# --- MONITORING DEPLOYMENT ---
+# --- 3. MONITORING DEPLOYMENT ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -61,14 +90,15 @@ spec:
         - name: data
           persistentVolumeClaim: { claimName: monitoring-pvc }
 ---
+# --- 4. SERVICE (THE FIX) ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: monitoring-ui
+  name: pushgateway-service # Renamed to match worker expectation
 spec:
   type: LoadBalancer
   ports:
-    - { name: prometheus, port: 9090 }
-    - { name: grafana, port: 3000 }
-    - { name: pushgateway, port: 9091 }
+    - { name: prometheus, port: 9090, targetPort: 9090 }
+    - { name: grafana, port: 3000, targetPort: 3000 }
+    - { name: pushgateway, port: 9091, targetPort: 9091 }
   selector: { component: monitoring }

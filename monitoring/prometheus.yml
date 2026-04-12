@@ -1,11 +1,9 @@
 global:
   scrape_interval: 10s
-  scrape_timeout: 9s # Senior Move: Must be less than interval to prevent "Scrape Overlap"
+  scrape_timeout: 9s 
 
 scrape_configs:
   # --- 1. DYNAMIC API DISCOVERY ---
-  # This uses the K8s API to find every IP of every Pod with 'app: tomato-api'.
-  # This is the ONLY way to monitor an HPA-scaled system correctly.
   - job_name: 'tomato-api'
     kubernetes_sd_configs:
       - role: pod
@@ -13,27 +11,22 @@ scrape_configs:
           names:
             - default 
     relabel_configs:
-      # Filter: Only scrape pods that have the label 'app=tomato-api'
       - source_labels: [__meta_kubernetes_pod_label_app]
         action: keep
         regex: tomato-api
-      # Translation: Map the Pod IP to the FastAPI port (8000)
       - source_labels: [__address__]
         action: replace
         regex: ([^:]+)(?::\d+)?
         replacement: $1:8000
         target_label: __address__
 
-  # --- 2. PUSHGATEWAY (Worker Metrics) ---
-  # SENIOR FIX: Since Pushgateway is a container INSIDE the Prometheus Pod,
-  # we use 'localhost'. This is faster and more reliable than the Service IP.
+  # --- 2. PUSHGATEWAY ---
   - job_name: 'pushgateway'
-    honor_labels: true # Prevents Prometheus from overwriting Worker 'model_variant' labels
+    honor_labels: true # CRITICAL for A/B testing labels
     static_configs:
       - targets: ['localhost:9091']
 
   # --- 3. REDIS MONITORING ---
-  # Scrapes the Redis Exporter which lives in a different Pod.
   - job_name: 'redis'
     static_configs:
       - targets: ['redis-exporter-service:9121']
