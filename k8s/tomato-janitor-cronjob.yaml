@@ -3,14 +3,14 @@ kind: CronJob
 metadata:
   name: tomato-janitor
 spec:
-  # Schedule: Every hour, on the hour.
+  # Schedule: Runs every hour, on the hour.
   schedule: "0 * * * *"
   
-  # --- SENIOR ADDITION: Housekeeping for the Housekeeper ---
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 5
+  # Clean up old metadata from the Kubernetes dashboard
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
   
-  # If a job is taking too long, don't start a new one on top of it
+  # Prevent multiple janitors from running if one gets stuck
   concurrencyPolicy: Forbid 
 
   jobTemplate:
@@ -23,24 +23,26 @@ spec:
             image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
             command: ["python", "worker/janitor.py"]
             
-            # Resources: Even a janitor needs boundaries
+            # --- SENIOR OPTIMIZATION ---
+            # We use very low requests so the scheduler can 'squeeze' 
+            # this pod into your laptop's remaining RAM/CPU.
             resources:
               requests:
-                cpu: "50m"
-                memory: "64Mi"
+                cpu: "10m"
+                memory: "32Mi"
               limits:
                 cpu: "100m"
                 memory: "128Mi"
 
             volumeMounts:
-            - name: shared-storage
+            - name: image-storage
               mountPath: /app/uploads
-              # THE CRITICAL FIX: Only mount the folder where images are stored.
-              # This protects Redis/Postgres data from the Janitor script.
-              subPath: active-sessions 
+              # subPath REMOVED: We mount the whole dedicated Upload PVC
               
           restartPolicy: OnFailure
           volumes:
-          - name: shared-storage
+          - name: image-storage
             persistentVolumeClaim: 
-              claimName: tomato-pvc
+              # --- THE CRITICAL FIX ---
+              # Must match the new name from your upload-pvc.yaml
+              claimName: tomato-upload-pvc
