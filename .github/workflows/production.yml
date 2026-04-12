@@ -20,26 +20,28 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          # THE FIX: Tell GitHub which file to use for caching
           cache: 'pip'
+          cache-dependency-path: 'requirements-test.txt'
 
       - name: Install All Dependencies
-        # Senior Move: We install the specialized test requirements
-        run: pip install -r requirements-test.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
 
       - name: Lint Check (Ruff)
-        # Fails the build if code doesn't meet professional standards
+        # We use 'continue-on-error: false' (default) to ensure it fails the build if code is messy
         run: ruff check .
 
       - name: Run Automated Tests
-        # Fails the build if your math or API logic is broken
-        # We set PYTHONPATH=. so tests can find 'shared', 'api', and 'worker'
+        # We use -v for verbose output so we can see exactly which tests pass in the logs
         run: |
           export PYTHONPATH=$PYTHONPATH:.
-          pytest tests/
+          pytest -v tests/
 
   # --- STAGE 2: PROTECTED BUILD & PUSH ---
   build-and-push:
-    needs: test-and-lint # CRITICAL: This build ONLY starts if tests pass
+    needs: test-and-lint # ONLY runs if tests pass
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -61,20 +63,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push API
+      - name: Build and push API image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./api/Dockerfile.api
           push: true
-          # We use the SHA of the commit as a version tag - Industry Standard
           tags: |
             ghcr.io/${{ env.IMAGE_OWNER }}/tomato-api:latest
             ghcr.io/${{ env.IMAGE_OWNER }}/tomato-api:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push Worker
+      - name: Build and push Worker image
         uses: docker/build-push-action@v5
         with:
           context: .
