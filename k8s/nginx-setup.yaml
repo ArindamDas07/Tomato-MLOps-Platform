@@ -16,34 +16,34 @@ data:
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 
         upstream tomato_backend {
-            # Senior Choice: least_conn is best for AI inference
+            # Senior Move: This group name MUST be used directly in proxy_pass
             least_conn;
             server tomato-api-service.default.svc.cluster.local:8000;
         }
 
         server {
             listen 80;
-            client_max_body_size 10M; # Allow images up to 10MB
+            client_max_body_size 10M;
 
             location / {
                 # Protection against DDoS/Spam
                 limit_req zone=api_limit burst=20 nodelay;
 
-                set $target http://tomato_backend;
+                # --- THE SENIOR FIX ---
+                # We removed the '$target' variable. 
+                # Pointing directly to the upstream group ensures Nginx uses
+                # the Least-Connection logic across your scaled Pods.
+                proxy_pass http://tomato_backend; 
                 
-                # --- THE CRITICAL FIX ---
-                proxy_pass $target$request_uri; 
-                
-                # --- SENIOR POLISH: Scaling Resilience ---
-                # If a Pod is scaling up/down and fails, try the next one 
-                # instead of showing an error to the user.
-                proxy_next_upstream error timeout http_502 http_503 http_504;
-                proxy_connect_timeout 5s;
-                proxy_read_timeout 90s;
-
+                # Standard proxy headers
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                
+                # Resilience settings for Auto-scaling
+                proxy_next_upstream error timeout http_502 http_503 http_504;
+                proxy_connect_timeout 5s;
+                proxy_read_timeout 90s;
             }
 
             # Health check for Nginx itself
@@ -80,7 +80,6 @@ spec:
         ports:
         - containerPort: 80
         
-        # --- NEW: Health Probes for Nginx ---
         livenessProbe:
           httpGet:
             path: /healthz
@@ -108,7 +107,6 @@ kind: Service
 metadata:
   name: nginx-ingress
 spec:
-  # Type LoadBalancer works perfectly on Docker Desktop to expose http://localhost
   type: LoadBalancer 
   ports:
   - port: 80        
