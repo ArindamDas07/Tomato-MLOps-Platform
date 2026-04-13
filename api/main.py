@@ -60,7 +60,14 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 @app.get("/")
 async def read_index(request: Request):
+    # Senior Fix: Correct argument order (request must be first)
     return templates.TemplateResponse(request, "index.html")
+
+# --- THE CRITICAL FIX: Add the missing Health Check ---
+@app.get("/health")
+async def health_check():
+    """Endpoint for Kubernetes Liveness/Readiness probes."""
+    return {"status": "healthy", "redis": check_redis_health()}
 
 @app.post('/upload')
 async def upload_image(file: UploadFile = File(...)):
@@ -116,12 +123,11 @@ async def get_final_result(user_id: str, task_id: str):
     try:
         raw_result = redis_client.get(task_id)
         if raw_result:
-            # Result in Redis is a JSON string, convert it to a dict
+            # Result from Redis is a JSON string, convert to dict
             prediction_data = json.loads(raw_result)
             # Validate dict into InferenceResult object
             validated_inference = InferenceResult(**prediction_data)
             
-            # Clean up the disk storage
             user_folder = UPLOAD_DIR / user_id
             if user_folder.exists():
                 shutil.rmtree(user_folder)
