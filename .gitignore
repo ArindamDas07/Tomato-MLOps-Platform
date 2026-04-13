@@ -29,3 +29,5 @@ uploads/
 .idea/
 *.swp
 k8s/tomato-secrets.yaml
+*.h5
+models/**/*.h5
