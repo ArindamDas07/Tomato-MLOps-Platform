@@ -16,9 +16,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           # THE EMERGENCY FIX: STOP BANDWIDTH BLEED
+          # This ensures we skip the 500MB+ models on GitHub
           lfs: false 
 
-      # --- NEW: This step converts your username to lowercase ---
+      # --- This step converts your username to lowercase ---
       - name: Lowercase Registry Address
         run: |
           echo "IMAGE_OWNER=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
@@ -41,6 +42,9 @@ jobs:
           push: true
           tags: ghcr.io/${{ env.IMAGE_OWNER }}/tomato-mlops-platform-api:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          # API doesn't need models, so no HF_TOKEN needed here
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build and push Worker image
         uses: docker/build-push-action@v5
@@ -48,5 +52,11 @@ jobs:
           context: .
           file: ./worker/Dockerfile.worker
           push: true
+          # --- THE SENIOR FIX: Pass the Secret into the Docker Build ---
+          # This allows the 'wget' command inside the Dockerfile to authenticate
+          build-args: |
+            HF_TOKEN=${{ secrets.HF_TOKEN }}
           tags: ghcr.io/${{ env.IMAGE_OWNER }}/tomato-mlops-platform-worker:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

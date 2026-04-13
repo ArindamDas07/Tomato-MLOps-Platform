@@ -1,17 +1,14 @@
 FROM python:3.10-slim
 
 # --- Step 1: Optimization ---
-# PYTHONDONTWRITEBYTECODE: Saves disk space by not creating .pyc files
-# PYTHONUNBUFFERED: Essential for seeing logs in real-time in Grafana/K8s
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
 WORKDIR /app
 
-# --- Step 2: System Dependencies (CRITICAL FIX) ---
-# We add 'procps' so that the Kubernetes Liveness Probe (pgrep) works.
-# We add 'libgl1' etc. for TensorFlow/Pillow image processing.
+# --- Step 2: System Dependencies ---
+# Added wget and ca-certificates for secure Hugging Face downloads
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libgl1 \
@@ -20,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     procps \
     curl \
+    wget \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Step 3: Security ---
@@ -30,10 +29,25 @@ COPY requirements-worker.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-worker.txt
 
-# --- Step 5: Copy Models ---
-# Copied BEFORE code because models change less often than code.
-# This makes Auto-scaling pulls faster.
-COPY ./models ./models
+# --- STEP 5: THE HUGGING FACE BRIDGE ---
+# We use an ARG so the HF_TOKEN is only available during the build phase
+ARG HF_TOKEN
+
+# Create the exact folders the Python code expects
+RUN mkdir -p /app/models/resnet50/v1 \
+             /app/models/efficientnetb0/v1 \
+             /app/models/gatekeeper/v1
+
+# Download real models from Hugging Face root into the subfolders
+# Senior Note: We use the token in the header even for public repos to ensure 100% availability
+RUN wget --header="Authorization: Bearer ${HF_TOKEN}" -q -O /app/models/resnet50/v1/tomato_resnet_model.h5 \
+    https://huggingface.co/ArindamDas07/tomato-leaf-disease-models/resolve/main/tomato_resnet_model.h5
+
+RUN wget --header="Authorization: Bearer ${HF_TOKEN}" -q -O /app/models/efficientnetb0/v1/efficientnetb0_tomato_96pct_weights.h5 \
+    https://huggingface.co/ArindamDas07/tomato-leaf-disease-models/resolve/main/efficientnetb0_tomato_96pct_weights.h5
+
+RUN wget --header="Authorization: Bearer ${HF_TOKEN}" -q -O /app/models/gatekeeper/v1/tomato_leaf_validator.h5 \
+    https://huggingface.co/ArindamDas07/tomato-leaf-disease-models/resolve/main/tomato_leaf_validator.h5
 
 # --- Step 6: Copy App Code ---
 COPY ./shared ./shared
@@ -43,7 +57,4 @@ COPY ./worker ./worker
 RUN mkdir -p uploads && chown -R appuser:appuser /app
 USER appuser
 
-# Start the worker
-# -c 1 is best for Auto-scaling: Let K8s manage replicas of PODS
-# rather than Celery managing replicas of processes.
 CMD ["celery", "-A", "worker.celery_app", "worker", "--loglevel=info", "-c", "1"]

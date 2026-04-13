@@ -16,7 +16,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # THE EMERGENCY FIX: STOP BANDWIDTH BLEED
           lfs: false 
 
       - name: Set up Python
@@ -47,7 +46,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # THE EMERGENCY FIX: STOP BANDWIDTH BLEED
           lfs: false 
 
       - name: Lowercase Registry Address
@@ -82,6 +80,9 @@ jobs:
           context: .
           file: ./worker/Dockerfile.worker
           push: true
+          # --- THE SENIOR FIX: Pass the Secret into the Docker Build ---
+          build-args: |
+            HF_TOKEN=${{ secrets.HF_TOKEN }}
           tags: |
             ghcr.io/${{ env.IMAGE_OWNER }}/tomato-worker:latest
             ghcr.io/${{ env.IMAGE_OWNER }}/tomato-worker:${{ github.sha }}
