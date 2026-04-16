@@ -23,7 +23,14 @@ CLASS_LABELS = [
     "Yellow_Leaf_Curl_Virus", "Mosaic_virus", "Healthy"
 ]
 
-@celery_app.task(bind=True, name="worker.gatekeeper")
+@celery_app.task(
+    bind=True,
+    name="worker.gatekeeper",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_kwargs={"max_retries": CELERY_MAX_RETRIES}
+)
 def task_gatekeeper(self, user_id: str, image_path: str):
     start_time = time.time()
     worker_name = socket.gethostname()
@@ -54,7 +61,14 @@ def task_gatekeeper(self, user_id: str, image_path: str):
         logger.exception(f"Gatekeeper failure for user {user_id}")
         raise e
 
-@celery_app.task(bind=True, name="worker.classifier")
+@celery_app.task(
+    bind=True,
+    name="worker.classifier",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_kwargs={"max_retries": CELERY_MAX_RETRIES}
+)
 def task_classifier(self, user_id: str, image_path: str):
     """
     Inference task with deterministic A/B testing via User ID hashing.

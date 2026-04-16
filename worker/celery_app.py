@@ -35,19 +35,25 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     broker_connection_max_retries=10,
 
-    # --- RELIABILITY ---
+    # --- RELIABILITY (Crucial for AI Inference) ---
+    # Task is only 'Acked' after finishing. If worker dies, task is re-queued.
     task_acks_late=True, 
     task_reject_on_worker_lost=True,
+    
+    # SENIOR MOVE: Prefetch=1 is mandatory for ML. 
+    # Workers take only ONE task at a time to keep the cluster balanced.
     worker_prefetch_multiplier=1,
     
-    # --- NEW SENIOR MOVE: ZOMBIE PREVENTION ---
-    # Soft limit: Raises an exception in the worker so it can clean up gracefully
-    task_soft_time_limit=60, 
-    # Hard limit: Kills the worker process if it completely freezes
-    task_time_limit=75,
+    # --- ZOMBIE & MEMORY LEAK PREVENTION ---
+    task_soft_time_limit=60, # Raises exception in Python (allows cleanup)
+    task_time_limit=75,      # Kills the process (hard stop)
     
-    # Tracks when a task actually starts processing (useful for monitoring latency)
-    task_track_started=True
+    # Automatically clean up Celery's internal metadata after 1 hour
+    result_expires=3600, 
+    
+    # --- OBSERVABILITY ---
+    task_track_started=True,
+    worker_send_task_events=True # Allows real-time monitoring via Flower/Dashboard
 )
 
-logger.info("⚙️ Celery App initialized with Time Limits and Late Acks.")
+logger.info("⚙️ Celery App initialized with Time Limits, Late Acks, and Result TTL.")

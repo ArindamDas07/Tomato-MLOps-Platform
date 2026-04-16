@@ -25,7 +25,7 @@ REDIS_DB_TASKS = os.getenv("REDIS_DB_TASKS", "0")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/app/uploads"))
 BASE_DIR = Path(__file__).resolve().parent
-
+MAX_FILE_SIZE = 10 * 1024 * 1024 # 10MB in bytes
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handles startup logic and directory creation."""
@@ -73,6 +73,11 @@ async def health_check():
 async def upload_image(file: UploadFile = File(...)):
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="Only images allowed")
+    
+    if file.size > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413, 
+            detail=f"Image too large. Maximum allowed size is 10MB. Got {file.size / (1024*1024):.2f}MB")
     
     user_id = str(uuid.uuid4())
     user_folder = UPLOAD_DIR / user_id
