@@ -26,7 +26,7 @@ roleRef:
   name: prometheus-role
   apiGroup: rbac.authorization.k8s.io
 ---
-# --- 2. PROMETHEUS (StatefulSet) ---
+# --- 2. PROMETHEUS (StatefulSet with Persistence Fix) ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -40,13 +40,25 @@ spec:
     metadata:
       labels: { app: prometheus }
     spec:
-      serviceAccountName: prometheus-sa # CRITICAL: Links to RBAC
+      serviceAccountName: prometheus-sa
+      # Fixes "Permission Denied" on Docker Desktop volumes
+      initContainers:
+      - name: fix-permissions
+        image: busybox:latest
+        command: ["sh", "-c", "chown -R 65534:65534 /prometheus"]
+        volumeMounts:
+        - name: data
+          mountPath: /prometheus
       containers:
         - name: prometheus
           image: prom/prometheus:v2.45.0
+          securityContext:
+            runAsUser: 65534
+            runAsGroup: 65534
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=15d"
           ports: [{ containerPort: 9090 }]
           volumeMounts:
             - name: config
@@ -60,19 +72,20 @@ spec:
         - name: data
           persistentVolumeClaim: { claimName: prometheus-pvc }
 ---
-# --- 3. PROMETHEUS SERVICE (The Fix for Localhost) ---
+# --- 3. PROMETHEUS SERVICE (External Access) ---
 apiVersion: v1
 kind: Service
 metadata:
   name: prometheus-service
 spec:
-  type: LoadBalancer # Changed to LoadBalancer
+  type: LoadBalancer 
   ports:
     - port: 9090
       targetPort: 9090
+      name: web
   selector: { app: prometheus }
 ---
-# --- 4. PUSHGATEWAY ---
+# --- 4. PUSHGATEWAY (Decoupled) ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -96,10 +109,10 @@ metadata:
   name: pushgateway-service
 spec:
   type: LoadBalancer
-  ports: [{ port: 9091 }]
+  ports: [{ port: 9091, targetPort: 9091 }]
   selector: { app: pushgateway }
 ---
-# --- 5. GRAFANA ---
+# --- 5. GRAFANA (With Persistence Fix) ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -112,9 +125,20 @@ spec:
     metadata:
       labels: { app: grafana }
     spec:
+      # Grafana uses UID 472. We must fix volume ownership.
+      initContainers:
+      - name: fix-permissions
+        image: busybox:latest
+        command: ["sh", "-c", "chown -R 472:472 /var/lib/grafana"]
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/grafana
       containers:
         - name: grafana
           image: grafana/grafana:10.2.0
+          securityContext:
+            runAsUser: 472
+            runAsGroup: 472
           env:
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "true"
@@ -132,5 +156,5 @@ metadata:
   name: grafana-service
 spec:
   type: LoadBalancer
-  ports: [{ port: 3000 }]
+  ports: [{ port: 3000, targetPort: 3000 }]
   selector: { app: grafana }
