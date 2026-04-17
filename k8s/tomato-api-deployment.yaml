@@ -14,6 +14,7 @@ spec:
     spec:
       imagePullSecrets: [{name: github-auth}]
       
+      # ---HA: Pod Anti-Affinity ---
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -25,6 +26,14 @@ spec:
                   operator: In
                   values: ["tomato-api"]
               topologyKey: "kubernetes.io/hostname"
+
+      # --- Dependency Management ---
+      # This ensures the API only starts once Redis is accepting connections.
+      # This prevents restarts and ensures the 'lifespan' startup logic succeeds.
+      initContainers:
+      - name: wait-for-redis
+        image: busybox:latest
+        command: ['sh', '-c', 'until nc -z redis 6379; do echo waiting for redis; sleep 2; done;']
 
       securityContext:
         runAsNonRoot: true
@@ -43,14 +52,15 @@ spec:
           requests: { cpu: "100m", memory: "256Mi" }
           limits: { cpu: "500m", memory: "512Mi" }
 
-        # ---  Cold Start Resilience ---
+        # ---  Tuned Probes ---
+        # Increased delays to account for Python interpreter and library initialization
         readinessProbe:
           httpGet: { path: /health, port: 8000 }
-          initialDelaySeconds: 40 # Increased from 10
+          initialDelaySeconds: 20 
           periodSeconds: 10
         livenessProbe:
           httpGet: { path: /health, port: 8000 }
-          initialDelaySeconds: 60 # Increased from 15
+          initialDelaySeconds: 30
           periodSeconds: 15
 
         envFrom:
@@ -60,6 +70,7 @@ spec:
         volumeMounts:
         - name: shared-uploads
           mountPath: /app/uploads
+        # Required for ReadOnlyRootFilesystem to allow temporary FastAPI/Python files
         - name: tmp-volume
           mountPath: /tmp
       
