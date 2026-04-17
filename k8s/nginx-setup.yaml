@@ -8,14 +8,12 @@ data:
         worker_connections 1024; 
     }
     http {
-        # K8s internal DNS resolver (Standard for most clusters)
+        # K8s internal DNS resolver
         resolver 10.96.0.10 valid=5s;
         
         # Rate Limiting: 10 requests per second per user IP
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 
-        # Note: We keep the upstream block for documentation, but use 
-        # the variable method below to prevent startup crashes.
         upstream tomato_backend {
             least_conn; 
             server tomato-api-service.default.svc.cluster.local:8000;
@@ -30,8 +28,6 @@ data:
                 limit_req zone=api_limit burst=20 nodelay;
 
                 # ---  Lazy DNS Resolution ---
-                # Using a variable forces Nginx to resolve the IP at runtime.
-                # This prevents 'Exit Code 1' if the API service isn't ready at boot.
                 set $target tomato-api-service.default.svc.cluster.local;
                 proxy_pass http://$target:8000; 
                 
@@ -72,28 +68,35 @@ spec:
       - name: nginx
         image: nginx:alpine
         resources:
+          #  Increased resources to prevent Nginx from being 
+          # throttled during heavy AI inference spikes on the host.
           requests:
-            cpu: "50m"
-            memory: "64Mi"
-          limits:
             cpu: "100m"
             memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
         ports:
         - containerPort: 80
         
-        #  Increased delays to prevent probe-cycling on Docker Desktop
+        # Lenient Probes for Docker Desktop
+        # We increase timeoutSeconds and failureThreshold to handle local I/O jitter.
         livenessProbe:
           httpGet:
             path: /healthz
             port: 80
-          initialDelaySeconds: 15
-          periodSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          timeoutSeconds: 5      # Increased from 1s
+          failureThreshold: 5    # Increased from 3
         readinessProbe:
           httpGet:
             path: /healthz
             port: 80
-          initialDelaySeconds: 15
-          periodSeconds: 5
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5      # Increased from 1s
+          failureThreshold: 3
 
         volumeMounts:
         - name: conf
