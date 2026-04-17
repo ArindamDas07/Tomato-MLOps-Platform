@@ -1,21 +1,32 @@
-# --- 1. STORAGE (Separate PVCs for Isolation) ---
+# --- 1. PERMISSIONS (RBAC) ---
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: ServiceAccount
 metadata:
-  name: prometheus-pvc
-spec:
-  accessModes: [ReadWriteOnce]
-  resources: { requests: { storage: 1Gi } }
+  name: prometheus-sa
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
 metadata:
-  name: grafana-pvc
-spec:
-  accessModes: [ReadWriteOnce]
-  resources: { requests: { storage: 512Mi } }
+  name: prometheus-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "nodes"]
+    verbs: ["get", "list", "watch"]
 ---
-# --- 2. PROMETHEUS (StatefulSet for Data Integrity) ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-rbac
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-sa
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: prometheus-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# --- 2. PROMETHEUS (StatefulSet) ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -29,7 +40,7 @@ spec:
     metadata:
       labels: { app: prometheus }
     spec:
-      serviceAccountName: prometheus-sa
+      serviceAccountName: prometheus-sa # CRITICAL: Links to RBAC
       containers:
         - name: prometheus
           image: prom/prometheus:v2.45.0
@@ -49,15 +60,19 @@ spec:
         - name: data
           persistentVolumeClaim: { claimName: prometheus-pvc }
 ---
+# --- 3. PROMETHEUS SERVICE (The Fix for Localhost) ---
 apiVersion: v1
 kind: Service
 metadata:
   name: prometheus-service
 spec:
-  ports: [{ port: 9090 }]
+  type: LoadBalancer # Changed to LoadBalancer
+  ports:
+    - port: 9090
+      targetPort: 9090
   selector: { app: prometheus }
 ---
-# --- 3. PUSHGATEWAY (Independent Deployment) ---
+# --- 4. PUSHGATEWAY ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -84,7 +99,7 @@ spec:
   ports: [{ port: 9091 }]
   selector: { app: pushgateway }
 ---
-# --- 4. GRAFANA (Independent Deployment) ---
+# --- 5. GRAFANA ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -103,8 +118,6 @@ spec:
           env:
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "true"
-            - name: GF_INSTALL_PLUGINS
-              value: "grafana-clock-panel,grafana-simple-json-datasource"
           ports: [{ containerPort: 3000 }]
           volumeMounts:
             - name: data
