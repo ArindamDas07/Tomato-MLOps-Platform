@@ -4,7 +4,7 @@ from worker.utils import get_raw_array, preprocess, calculate_drift
 from worker.metrics import log_inference_result, log_gatekeeper_result, push_metrics
 from shared.redis_conn import redis_client, RESULT_TTL 
 from shared.schemas import InferenceResult
-import hashlib # Senior Move: Standard library for deterministic logic
+import hashlib  
 import time
 import socket
 import shutil
@@ -82,7 +82,7 @@ def task_classifier(self, user_id: str, image_path: str):
         return
 
     try:
-        # --- SENIOR MOVE: Deterministic Hashing ---
+        #  Deterministic Hashing ---
         # Instead of random, we hash the user_id to get a consistent assignment.
         # EfficientNet: 70% | ResNet: 30%
         user_hash = int(hashlib.md5(user_id.encode()).hexdigest(), 16) % 100

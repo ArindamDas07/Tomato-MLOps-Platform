@@ -60,7 +60,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 @app.get("/")
 async def read_index(request: Request):
-    # Senior Fix: Correct argument order (request must be first)
+    #  Correct argument order (request must be first)
     return templates.TemplateResponse(request, "index.html")
 
 # --- THE CRITICAL FIX: Add the missing Health Check ---

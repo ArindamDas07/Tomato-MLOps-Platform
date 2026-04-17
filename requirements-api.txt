@@ -9,6 +9,6 @@ prometheus-client==0.20.0
 python-multipart==0.0.9
 aiofiles==24.1.0
 Jinja2==3.1.3
-# Senior Addition: This helps FastAPI handle async requests better
+#  This helps FastAPI handle async requests better
 httpx==0.27.0
 pydantic==2.6.4

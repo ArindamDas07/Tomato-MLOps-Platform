@@ -33,7 +33,7 @@ def test_upload_success_logic(mock_celery, tmp_path):
     mock_task.id = "fake-task-uuid"
     mock_celery.return_value = mock_task
     
-    # 2. Senior Fix: Force the API to use the temporary folder provided by pytest
+    # 2. Force the API to use the temporary folder provided by pytest
     with patch("api.main.UPLOAD_DIR", tmp_path):
         file_data = {"file": ("leaf.jpg", b"fake-data", "image/jpeg")}
         response = client.post("/upload", files=file_data)

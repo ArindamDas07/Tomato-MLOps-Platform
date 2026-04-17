@@ -39,7 +39,7 @@ RUN mkdir -p /app/models/resnet50/v1 \
              /app/models/gatekeeper/v1
 
 # Download real models from Hugging Face root into the subfolders
-# Senior Note: We use the token in the header even for public repos to ensure 100% availability
+#  We use the token in the header even for public repos to ensure 100% availability
 RUN wget --header="Authorization: Bearer ${HF_TOKEN}" -q -O /app/models/resnet50/v1/tomato_resnet_model.h5 \
     https://huggingface.co/ArindamDas07/tomato-leaf-disease-models/resolve/main/tomato_resnet_model.h5
 

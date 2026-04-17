@@ -1,5 +1,4 @@
-# --- 1. API FIREWALL ---
-# Only allow Nginx to talk to the API
+# --- 1. API FIREWALL: Only Nginx can talk to the API ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -8,16 +7,14 @@ spec:
   podSelector:
     matchLabels:
       app: tomato-api
-  policyTypes:
-  - Ingress
+  policyTypes: [Ingress]
   ingress:
   - from:
     - podSelector:
         matchLabels:
           app: nginx
 ---
-# --- 2. REDIS FIREWALL ---
-# Only allow API and Worker to talk to Redis
+# --- 2. REDIS FIREWALL: Only API and Worker can talk to Redis ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -26,8 +23,7 @@ spec:
   podSelector:
     matchLabels:
       app: redis
-  policyTypes:
-  - Ingress
+  policyTypes: [Ingress]
   ingress:
   - from:
     - podSelector:
@@ -37,8 +33,7 @@ spec:
         matchLabels:
           app: tomato-worker
 ---
-# --- 3. DATABASE FIREWALL ---
-# Only allow Worker and MLflow to talk to Postgres
+# --- 3. DATABASE FIREWALL: Only Worker and MLflow can talk to Postgres ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -47,8 +42,7 @@ spec:
   podSelector:
     matchLabels:
       app: postgres
-  policyTypes:
-  - Ingress
+  policyTypes: [Ingress]
   ingress:
   - from:
     - podSelector:
@@ -58,16 +52,14 @@ spec:
         matchLabels:
           app: mlflow
 ---
-# --- 4. MONITORING FIREWALL ---
-# Allow Prometheus to scrape metrics from everyone
+# --- 4. MONITORING FIREWALL: Allow Prometheus to scrape everyone ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-prometheus-scraping
 spec:
-  podSelector: {} # Protects all pods
-  policyTypes:
-  - Ingress
+  podSelector: {} # Applies to all pods in the namespace
+  policyTypes: [Ingress]
   ingress:
   - from:
     - podSelector:

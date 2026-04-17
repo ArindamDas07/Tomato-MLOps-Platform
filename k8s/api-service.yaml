@@ -5,15 +5,13 @@ metadata:
   labels:
     app: tomato-api
 spec:
-  # --- THE SENIOR FIX: Headless Service ---
-  # clusterIP: None tells K8s NOT to give this service a single IP.
-  # This allows Nginx to see individual Pod IPs for true 'least_conn' balancing.
+  #  Headless Service ---
+  # clusterIP: None allows Nginx to perform true 'least_conn' balancing 
+  # by seeing the individual IP of every scaled FastAPI pod.
   clusterIP: None 
-  
   selector:
-    app: tomato-api # This MUST match the labels in your tomato-api-deployment.yaml
-    
+    app: tomato-api
   ports:
     - protocol: TCP
-      port: 80        # The port Nginx will use (tomato-api-service:80)
-      targetPort: 8000 # The port your FastAPI app is listening on
+      port: 8000
+      targetPort: 8000

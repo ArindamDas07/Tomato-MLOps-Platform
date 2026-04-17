@@ -3,7 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: tomato-upload-pvc
 spec:
-  # Senior Note: On Docker Desktop, ReadWriteOnce allows multiple pods 
+  # On Docker Desktop, ReadWriteOnce allows multiple pods 
   # to mount the disk as long as they are on the same machine.
   accessModes:
     - ReadWriteOnce 

@@ -94,7 +94,7 @@ function handleFinalResult(data) {
     if (data.status === "done" && data.prediction) {
         statusDiv.innerText = "Classification Complete";
         
-        // SENIOR FIX: 'data.prediction' is already a JSON object from FastAPI.
+        //  'data.prediction' is already a JSON object from FastAPI.
         // We removed JSON.parse() to prevent the code from crashing.
         const prediction = data.prediction; 
         

@@ -8,7 +8,7 @@ def test_calculate_drift_math():
     Using float32 dummy image so pixels can match the baseline (116.536) exactly.
     """
     baseline_val = TRAINING_BASELINES["brightness"]
-    # Senior Fix: Use float32 to avoid uint8 rounding errors in tests
+    # Use float32 to avoid uint8 rounding errors in tests
     perfect_image = np.full((224, 224, 3), baseline_val, dtype=np.float32)
     
     stats, drift = calculate_drift(perfect_image)

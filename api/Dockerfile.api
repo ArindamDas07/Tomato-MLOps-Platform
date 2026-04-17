@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-api.txt
 
 # --- Step 4: Application Code (Shared & API) ---
-# Senior Move: We copy the shared infrastructure logic 
+#  We copy the shared infrastructure logic 
 # and the API logic separately.
 COPY ./shared ./shared
 COPY ./api ./api

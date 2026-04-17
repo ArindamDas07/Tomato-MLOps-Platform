@@ -40,7 +40,7 @@ celery_app.conf.update(
     task_acks_late=True, 
     task_reject_on_worker_lost=True,
     
-    # SENIOR MOVE: Prefetch=1 is mandatory for ML. 
+    #  Prefetch=1 is mandatory for ML. 
     # Workers take only ONE task at a time to keep the cluster balanced.
     worker_prefetch_multiplier=1,
     

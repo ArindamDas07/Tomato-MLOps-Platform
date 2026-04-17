@@ -23,7 +23,7 @@ spec:
             image: ghcr.io/arindamdas07/tomato-mlops-platform-worker:latest
             command: ["python", "worker/janitor.py"]
             
-            # --- SENIOR OPTIMIZATION ---
+            # --- OPTIMIZATION ---
             # We use very low requests so the scheduler can 'squeeze' 
             # this pod into your laptop's remaining RAM/CPU.
             resources:
