@@ -1,0 +1,74 @@
+# =================================================================
+# TOMATO MLOPS - PRODUCTION DOCKER IGNORE
+# =================================================================
+
+# --- 1. Virtual Environments (CRITICAL) ---
+# Prevents local Windows/Mac packages from leaking into Linux containers
+tomato-env/
+venv/
+.venv/
+env/
+bin/
+lib/
+share/
+
+# --- 2. Secrets & Sensitive Config ---
+# NEVER bake these into an image; use K8s Secrets/ConfigMaps instead
+.env
+.env.*
+secrets.yaml
+github-auth.json
+*.local
+
+# --- 3. Python Artifacts & Cache ---
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.tox/
+.coverage
+htmlcov/
+
+# --- 4. Local Data & Storage ---
+# We use K8s Persistent Volume Claims (PVCs) for these
+uploads/
+test_uploads/
+data/
+datasets/
+*.jpg
+*.png
+*.jpeg
+*.csv
+*.parquet
+
+# --- 5. AI Models (Large Files) ---
+# Models are downloaded via wget in the Dockerfile to ensure fresh versions
+# We ignore local copies to keep the build context small.
+models/
+**/*.h5
+**/*.pt
+**/*.pth
+**/*.onnx
+**/*.pb
+
+# --- 6. Infrastructure & DevOps ---
+# These are for the cluster/repo, not for the application runtime
+.git/
+.gitignore
+.github/
+k8s/
+docker-compose.yml
+helm/
+docs/
+README.md
+LICENSE
+
+# --- 7. IDE & OS Junk ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
