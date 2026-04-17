@@ -26,7 +26,17 @@ roleRef:
   name: prometheus-role
   apiGroup: rbac.authorization.k8s.io
 ---
-# --- 2. PROMETHEUS (StatefulSet with Persistence Fix) ---
+# --- 2. STORAGE (The Persistence Layer) ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pushgateway-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 512Mi }
+---
+# --- 3. PROMETHEUS (StatefulSet) ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -41,7 +51,6 @@ spec:
       labels: { app: prometheus }
     spec:
       serviceAccountName: prometheus-sa
-      # Fixes "Permission Denied" on Docker Desktop volumes
       initContainers:
       - name: fix-permissions
         image: busybox:latest
@@ -59,6 +68,7 @@ spec:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
             - "--storage.tsdb.retention.time=15d"
+            - "--web.enable-lifecycle" # Allows reloading config without restart
           ports: [{ containerPort: 9090 }]
           volumeMounts:
             - name: config
@@ -72,7 +82,6 @@ spec:
         - name: data
           persistentVolumeClaim: { claimName: prometheus-pvc }
 ---
-# --- 3. PROMETHEUS SERVICE (External Access) ---
 apiVersion: v1
 kind: Service
 metadata:
@@ -85,7 +94,7 @@ spec:
       name: web
   selector: { app: prometheus }
 ---
-# --- 4. PUSHGATEWAY (Decoupled) ---
+# --- 4. PUSHGATEWAY (Now with Persistence) ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -98,10 +107,27 @@ spec:
     metadata:
       labels: { app: pushgateway }
     spec:
+      #  Ensure Pushgateway can write its persistence file
+      initContainers:
+      - name: fix-permissions
+        image: busybox:latest
+        command: ["sh", "-c", "chown -R 65534:65534 /data"]
+        volumeMounts:
+        - name: push-data
+          mountPath: /data
       containers:
         - name: pushgateway
           image: prom/pushgateway:v1.7.0
+          args: 
+            - "--persistence.file=/data/metrics.file"
+            - "--persistence.interval=5m" # Saves RAM to Disk every 5 mins
           ports: [{ containerPort: 9091 }]
+          volumeMounts:
+          - name: push-data
+            mountPath: /data
+      volumes:
+      - name: push-data
+        persistentVolumeClaim: { claimName: pushgateway-pvc }
 ---
 apiVersion: v1
 kind: Service
@@ -112,7 +138,7 @@ spec:
   ports: [{ port: 9091, targetPort: 9091 }]
   selector: { app: pushgateway }
 ---
-# --- 5. GRAFANA (With Persistence Fix) ---
+# --- 5. GRAFANA (Persistent) ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -125,7 +151,6 @@ spec:
     metadata:
       labels: { app: grafana }
     spec:
-      # Grafana uses UID 472. We must fix volume ownership.
       initContainers:
       - name: fix-permissions
         image: busybox:latest
