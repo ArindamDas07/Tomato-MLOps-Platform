@@ -1,47 +1,48 @@
 {
-  "title": "Tomato AI - Executive Command Center",
+  "title": "🍅 Tomato AI - Executive Command Center",
   "panels": [
     {
       "title": "TOTAL REQUESTS",
       "type": "gauge",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
-      "targets": [{ "expr": "sum(tomato_uploads_total) or sum(tomato_uploads_total_total) or vector(0)" }],
-      "fieldConfig": { "defaults": { "min": 0, "max": 500, "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } }
+      "targets": [{ "expr": "sum(tomato_uploads_total) or vector(0)" }],
+      "fieldConfig": { 
+        "defaults": { "min": 0, "max": 500, "thresholds": { "steps": [{ "color": "green", "value": null }] } } 
+      }
     },
     {
-      "title": "A/B TEST: RESNET",
+      "title": "A/B TEST: RESNET50",
       "type": "gauge",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
       "targets": [{ "expr": "sum(tomato_disease_predictions_total{model_variant=\"resnet\"}) or vector(0)" }],
-      "fieldConfig": { "defaults": { "min": 0, "max": 250, "color": { "mode": "fixed", "fixedColor": "blue" } } }
+      "fieldConfig": { "defaults": { "min": 0, "max": 250, "fixedColor": "blue" } }
     },
     {
       "title": "A/B TEST: EFFICIENTNET",
       "type": "gauge",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
       "targets": [{ "expr": "sum(tomato_disease_predictions_total{model_variant=\"efficient\"}) or vector(0)" }],
-      "fieldConfig": { "defaults": { "min": 0, "max": 250, "color": { "mode": "fixed", "fixedColor": "orange" } } }
+      "fieldConfig": { "defaults": { "min": 0, "max": 250, "fixedColor": "orange" } }
     },
     {
       "title": "GATEKEEPER RATIO",
       "type": "piechart",
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 8 },
+      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 8 },
       "targets": [{ "expr": "sum by (status) (tomato_gatekeeper_checks_total)" }]
     },
     {
-      "title": "6. Model Drift: Brightness",
+      "title": "BRIGHTNESS DEVIATION",
       "type": "gauge",
-      "gridPos": { "h": 10, "w": 6, "x": 12, "y": 8 },
+      "gridPos": { "h": 10, "w": 8, "x": 8, "y": 8 },
+      "description": "0% = Perfect Match. Positive = Too Bright | Negative = Too Dark",
       "targets": [{ 
-        "expr": "tomato_drift_percentage{drift_type=\"drift_brightness_pct\"}",
-        "legendFormat": "Brightness Drift" 
+        "expr": "max(tomato_drift_percentage{drift_type=\"drift_brightness_pct\"})" 
       }],
       "fieldConfig": {
         "defaults": {
           "min": -50,
           "max": 50,
           "unit": "percent",
-          "displayName": "Brightness Drift",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -54,19 +55,18 @@
       }
     },
     {
-      "title": "7. Model Drift: Contrast",
+      "title": "CONTRAST DEVIATION",
       "type": "gauge",
-      "gridPos": { "h": 10, "w": 6, "x": 18, "y": 8 },
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 8 },
+      "description": "0% = Perfect Match. Positive = Too Harsh | Negative = Too Blurry",
       "targets": [{ 
-        "expr": "tomato_drift_percentage{drift_type=\"drift_contrast_pct\"}",
-        "legendFormat": "Contrast Drift" 
+        "expr": "max(tomato_drift_percentage{drift_type=\"drift_contrast_pct\"})" 
       }],
       "fieldConfig": {
         "defaults": {
           "min": -50,
           "max": 50,
           "unit": "percent",
-          "displayName": "Contrast Drift",
           "thresholds": {
             "mode": "absolute",
             "steps": [
