@@ -4,6 +4,7 @@ global:
 
 scrape_configs:
   # --- 1. DYNAMIC API DISCOVERY ---
+  # Scrapes FastAPI metrics from all pods labeled 'app: tomato-api'
   - job_name: 'tomato-api'
     kubernetes_sd_configs:
       - role: pod
@@ -20,18 +21,22 @@ scrape_configs:
         replacement: $1:8000
         target_label: __address__
 
-  # --- 2. PUSHGATEWAY ---
+  # --- 2. PUSHGATEWAY (Worker Metrics) ---
+  # Changed from 'localhost' to 'pushgateway-service'
+  # This allows Prometheus to find the decoupled Pushgateway pod via K8s DNS.
   - job_name: 'pushgateway'
-    honor_labels: true # CRITICAL for A/B testing labels
+    honor_labels: true # CRITICAL: Preserves A/B testing labels from the worker
     static_configs:
-      - targets: ['localhost:9091']
+      - targets: ['pushgateway-service:9091']
 
   # --- 3. REDIS MONITORING ---
+  # Scrapes the Redis Exporter sidecar
   - job_name: 'redis'
     static_configs:
       - targets: ['redis-exporter-service:9121']
 
   # --- 4. PROMETHEUS SELF-HEALTH ---
+  # Localhost is still valid here because Prometheus is scraping its own endpoint
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
