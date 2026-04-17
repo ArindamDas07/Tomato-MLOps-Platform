@@ -1,4 +1,4 @@
-# --- 1. STORAGE ISOLATION ---
+# --- 1. STORAGE ISOLATION (PVCs) ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -17,26 +17,51 @@ spec:
   resources:
     requests: { storage: 1Gi }
 ---
-# --- 2. REDIS (Hardened with InitContainer) ---
-apiVersion: apps/v1
-kind: Deployment
+# --- 2. REDIS HEADLESS SERVICE (Required for StatefulSet) ---
+apiVersion: v1
+kind: Service
 metadata:
   name: redis
 spec:
-  replicas: 1
+  clusterIP: None # Headless
+  ports: [{ port: 6379 }]
+  selector: { app: redis }
+---
+# --- 3. REDIS STATEFULSET (Anti-SPOF Configuration) ---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+spec:
+  serviceName: "redis"
+  replicas: 1 # Scalable to 3+ for HA in Cloud
   selector:
     matchLabels: { app: redis }
   template:
     metadata:
       labels: { app: redis }
     spec:
+      # Ensure Redis doesn't share a node with another Redis pod
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["redis"]
+              topologyKey: "kubernetes.io/hostname"
+
       initContainers:
       - name: volume-mount-hack
-        image: busybox
+        image: busybox:latest
         command: ["sh", "-c", "chown -R 999:999 /data"]
         volumeMounts:
         - name: redis-data
           mountPath: /data
+      
       containers:
       - name: redis
         image: redis:7-alpine
@@ -47,6 +72,10 @@ spec:
         ports: [{ containerPort: 6379 }]
         resources:
           requests: { cpu: "50m", memory: "64Mi" }
+          limits: { cpu: "100m", memory: "128Mi" }
+        livenessProbe:
+          tcpSocket: { port: 6379 }
+          initialDelaySeconds: 10
         volumeMounts:
         - name: redis-data
           mountPath: /data
@@ -54,16 +83,7 @@ spec:
       - name: redis-data
         persistentVolumeClaim: { claimName: redis-pvc }
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: redis
-spec:
-  ports: [{ port: 6379 }]
-  selector: { app: redis }
----
-# --- 3. REDIS EXPORTER (THE MISSING LINK) ---
-# This translates Redis metrics for Prometheus
+# --- 4. REDIS EXPORTER (Observability Sidecar) ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -85,22 +105,32 @@ spec:
         ports: [{ containerPort: 9121 }]
         resources:
           requests: { cpu: "20m", memory: "32Mi" }
-          limits: { cpu: "50m", memory: "64Mi" }
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis-exporter-service # Points to the Prometheus Scraper
+  name: redis-exporter-service
 spec:
   ports: [{ port: 9121, targetPort: 9121 }]
   selector: { app: redis-exporter }
 ---
-# --- 4. POSTGRES (Hardened with InitContainer) ---
-apiVersion: apps/v1
-kind: Deployment
+# --- 5. POSTGRES HEADLESS SERVICE ---
+apiVersion: v1
+kind: Service
 metadata:
   name: postgres
 spec:
+  clusterIP: None # Headless for StatefulSet stable network IDs
+  ports: [{ port: 5432 }]
+  selector: { app: postgres }
+---
+# --- 6. POSTGRES STATEFULSET (Hardened & Ready for MLflow) ---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: "postgres"
   replicas: 1
   selector:
     matchLabels: { app: postgres }
@@ -108,16 +138,29 @@ spec:
     metadata:
       labels: { app: postgres }
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["postgres"]
+              topologyKey: "kubernetes.io/hostname"
+
       initContainers:
       - name: volume-mount-hack
-        image: busybox
+        image: busybox:latest
         command: ["sh", "-c", "chown -R 999:999 /var/lib/postgresql/data"]
         volumeMounts:
         - name: pg-data
           mountPath: /var/lib/postgresql/data
+      
       containers:
       - name: postgres
-        image: postgres:15
+        image: postgres:15-alpine
         securityContext:
           runAsUser: 999
           allowPrivilegeEscalation: false
@@ -132,17 +175,14 @@ spec:
         ports: [{ containerPort: 5432 }]
         resources:
           requests: { cpu: "100m", memory: "128Mi" }
+          limits: { cpu: "200m", memory: "256Mi" }
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "mlflowuser", "-d", "mlflowdb"]
+          initialDelaySeconds: 15
         volumeMounts:
         - name: pg-data
           mountPath: /var/lib/postgresql/data
       volumes:
       - name: pg-data
         persistentVolumeClaim: { claimName: postgres-pvc }
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres
-spec:
-  ports: [{ port: 5432 }]
-  selector: { app: postgres }

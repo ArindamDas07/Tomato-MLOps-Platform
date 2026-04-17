@@ -6,15 +6,16 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 10s
-      scrape_timeout: 9s
+      scrape_timeout: 9s # RE-ADDED: Critical to prevent scrape hangs
 
     scrape_configs:
-      # DYNAMIC API DISCOVERY (For Auto-scaling)
+      # 1. DYNAMIC API DISCOVERY
+      # Scrapes all pods labeled 'app: tomato-api'
       - job_name: 'tomato-api'
         kubernetes_sd_configs:
           - role: pod
             namespaces:
-              names: ["default"]
+              names: ["default"] # RE-ADDED: Security best practice
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_label_app]
             action: keep
@@ -25,17 +26,19 @@ data:
             replacement: $1:8000
             target_label: __address__
 
-      # PUSHGATEWAY (For Worker Metrics)
+      # 2. PUSHGATEWAY (For Worker Metrics)
+      # Changed from 'localhost' to 'pushgateway-service' because they are now in separate pods
       - job_name: 'pushgateway'
         honor_labels: true  
         static_configs:
-          - targets: ['localhost:9091']
+          - targets: ['pushgateway-service:9091']
 
-      # REDIS MONITORING
+      # 3. REDIS MONITORING
       - job_name: 'redis'
         static_configs:
           - targets: ['redis-exporter-service:9121']
 
+      # 4. PROMETHEUS SELF-MONITORING
       - job_name: 'prometheus'
         static_configs:
-          - targets: ['localhost:9090']
+          - targets: ['localhost:9090'] # Localhost works here because Prometheus is scraping itself

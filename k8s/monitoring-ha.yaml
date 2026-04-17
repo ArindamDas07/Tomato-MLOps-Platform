@@ -1,0 +1,123 @@
+# --- 1. STORAGE (Separate PVCs for Isolation) ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 512Mi } }
+---
+# --- 2. PROMETHEUS (StatefulSet for Data Integrity) ---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+spec:
+  serviceName: "prometheus"
+  replicas: 1
+  selector:
+    matchLabels: { app: prometheus }
+  template:
+    metadata:
+      labels: { app: prometheus }
+    spec:
+      serviceAccountName: prometheus-sa
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.45.0
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+          ports: [{ containerPort: 9090 }]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap: { name: prometheus-config }
+        - name: data
+          persistentVolumeClaim: { claimName: prometheus-pvc }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+spec:
+  ports: [{ port: 9090 }]
+  selector: { app: prometheus }
+---
+# --- 3. PUSHGATEWAY (Independent Deployment) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pushgateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: pushgateway }
+  template:
+    metadata:
+      labels: { app: pushgateway }
+    spec:
+      containers:
+        - name: pushgateway
+          image: prom/pushgateway:v1.7.0
+          ports: [{ containerPort: 9091 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pushgateway-service
+spec:
+  type: LoadBalancer
+  ports: [{ port: 9091 }]
+  selector: { app: pushgateway }
+---
+# --- 4. GRAFANA (Independent Deployment) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: grafana }
+  template:
+    metadata:
+      labels: { app: grafana }
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.2.0
+          env:
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_INSTALL_PLUGINS
+              value: "grafana-clock-panel,grafana-simple-json-datasource"
+          ports: [{ containerPort: 3000 }]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: grafana-pvc }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+spec:
+  type: LoadBalancer
+  ports: [{ port: 3000 }]
+  selector: { app: grafana }

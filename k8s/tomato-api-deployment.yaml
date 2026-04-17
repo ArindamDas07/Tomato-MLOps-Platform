@@ -14,7 +14,21 @@ spec:
     spec:
       imagePullSecrets: [{name: github-auth}]
       
-      # --- SENIOR SECURITY CONTEXT (Pod Level) ---
+      # ---  Pod Anti-Affinity ---
+      # This ensures API replicas are distributed across the cluster.
+      # We use 'preferred' so it still works on your single-node Docker Desktop.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["tomato-api"]
+              topologyKey: "kubernetes.io/hostname"
+
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000
@@ -23,10 +37,9 @@ spec:
       - name: tomato-api
         image: ghcr.io/arindamdas07/tomato-mlops-platform-api:latest
         
-        # --- SENIOR SECURITY CONTEXT (Container Level) ---
         securityContext:
           allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true  # The 'Iron Cage'
+          readOnlyRootFilesystem: true 
           runAsUser: 1000
 
         resources:
@@ -47,7 +60,6 @@ spec:
         volumeMounts:
         - name: shared-uploads
           mountPath: /app/uploads
-        # Exception for ReadOnlyRootFilesystem: Allow writing to /tmp
         - name: tmp-volume
           mountPath: /tmp
       

@@ -1,0 +1,98 @@
+# --- 1. STORAGE FOR MODELS & ARTIFACTS ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifact-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 2Gi }
+---
+# --- 2. MLFLOW STATEFULSET (Anti-SPOF & Resilient) ---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mlflow
+spec:
+  serviceName: "mlflow"
+  replicas: 1
+  selector:
+    matchLabels: { app: mlflow }
+  template:
+    metadata:
+      labels: { app: mlflow }
+    spec:
+      # Ensure MLflow doesn't compete for resources with the DB
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["postgres"]
+              topologyKey: "kubernetes.io/hostname"
+
+      # Wait for Postgres to be ready before starting MLflow
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command: ['sh', '-c', 'until pg_isready -h postgres -p 5432; do echo waiting for postgres; sleep 2; done;']
+      
+      containers:
+      - name: mlflow
+        image: ghcr.io/mlflow/mlflow:v2.12.1
+        ports: [{ containerPort: 5000 }]
+        resources:
+          requests: { cpu: "100m", memory: "256Mi" }
+          limits: { cpu: "500m", memory: "1Gi" }
+        env:
+        - name: DB_PASS
+          valueFrom:
+            secretKeyRef: { name: tomato-secrets, key: POSTGRES_PASSWORD }
+        
+        # IMPROVED PROBES: Check the actual health endpoint
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 20
+
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            #  In a real production environment, we would use a 
+            # custom Docker image with psycopg2-binary pre-installed.
+            # This runtime install is kept for local flexibility but flagged.
+            pip install psycopg2-binary --no-cache-dir;
+            mlflow server \
+              --host 0.0.0.0 \
+              --port 5000 \
+              --backend-store-uri postgresql://mlflowuser:${DB_PASS}@postgres:5432/mlflowdb \
+              --default-artifact-root /mlflow-artifacts \
+              --serve-artifacts
+        volumeMounts:
+        - name: artifacts
+          mountPath: /mlflow-artifacts
+      volumes:
+      - name: artifacts
+        persistentVolumeClaim: { claimName: mlflow-artifact-pvc }
+---
+# --- 3. MLFLOW SERVICE ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+spec:
+  type: LoadBalancer
+  ports: [{ port: 5000 }]
+  selector: { app: mlflow }

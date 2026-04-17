@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: tomato-worker
 spec:
-  replicas: 1 
+  replicas: 2 # Start with 2 for High Availability
   selector:
     matchLabels:
       app: tomato-worker
@@ -14,6 +14,19 @@ spec:
     spec:
       imagePullSecrets: [{name: github-auth}]
       
+      # Spread pods across nodes (Soft-limit for Docker Desktop)
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["tomato-worker"]
+              topologyKey: "kubernetes.io/hostname"
+
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000
@@ -28,16 +41,28 @@ spec:
           runAsUser: 1000
 
         resources:
-          requests: { memory: "1Gi", cpu: "500m" }
+          requests: { memory: "1.5Gi", cpu: "500m" }
           limits: { memory: "3Gi", cpu: "1000m" }
             
         envFrom:
         - configMapRef: { name: tomato-config }
         - secretRef: { name: tomato-secrets }
 
+        # --- THE HEALTH CHECK ---
         livenessProbe:
-          exec: { command: ["pgrep", "-f", "celery"] }
-          initialDelaySeconds: 30 
+          exec:
+            # We ping the specific worker instance to ensure the event loop isn't deadlocked
+            command: ["bash", "-c", "celery -A worker.celery_app inspect ping -d celery@$HOSTNAME"]
+          initialDelaySeconds: 45 # Give AI models time to load into RAM
+          periodSeconds: 60
+          timeoutSeconds: 10
+
+        readinessProbe:
+          exec:
+            # Ensure worker is actually joined to the cluster
+            command: ["bash", "-c", "celery -A worker.celery_app inspect active"]
+          initialDelaySeconds: 20
+          periodSeconds: 30
 
         volumeMounts:
         - name: shared-uploads
