@@ -8,10 +8,7 @@ data:
         worker_connections 1024; 
     }
     http {
-        # K8s internal DNS resolver
         resolver 10.96.0.10 valid=5s;
-        
-        # Rate Limiting: 10 requests per second per user IP
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 
         upstream tomato_backend {
@@ -24,25 +21,21 @@ data:
             client_max_body_size 10M;
 
             location / {
-                # Protection against DDoS/Spam
                 limit_req zone=api_limit burst=20 nodelay;
 
-                # ---  Lazy DNS Resolution ---
+                #  Lazy DNS Resolution ---
                 set $target tomato-api-service.default.svc.cluster.local;
                 proxy_pass http://$target:8000; 
                 
-                # Standard proxy headers
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 
-                # Resilience settings for AI Inference
                 proxy_next_upstream error timeout http_502 http_503 http_504;
                 proxy_connect_timeout 5s;
                 proxy_read_timeout 90s;
             }
 
-            # Health check for Nginx itself
             location /healthz {
                 access_log off;
                 return 200 'OK';
@@ -68,8 +61,6 @@ spec:
       - name: nginx
         image: nginx:alpine
         resources:
-          #  Increased resources to prevent Nginx from being 
-          # throttled during heavy AI inference spikes on the host.
           requests:
             cpu: "100m"
             memory: "128Mi"
@@ -79,23 +70,22 @@ spec:
         ports:
         - containerPort: 80
         
-        # Lenient Probes for Docker Desktop
-        # We increase timeoutSeconds and failureThreshold to handle local I/O jitter.
+        # --- Cold Start Resilience ---
         livenessProbe:
           httpGet:
             path: /healthz
             port: 80
-          initialDelaySeconds: 20
+          initialDelaySeconds: 60 # Increased from 20
           periodSeconds: 15
-          timeoutSeconds: 5      # Increased from 1s
-          failureThreshold: 5    # Increased from 3
+          timeoutSeconds: 10     # Increased from 5
+          failureThreshold: 5
         readinessProbe:
           httpGet:
             path: /healthz
             port: 80
-          initialDelaySeconds: 20
+          initialDelaySeconds: 60 # Increased from 20
           periodSeconds: 10
-          timeoutSeconds: 5      # Increased from 1s
+          timeoutSeconds: 10     # Increased from 5
           failureThreshold: 3
 
         volumeMounts:

@@ -14,9 +14,6 @@ spec:
     spec:
       imagePullSecrets: [{name: github-auth}]
       
-      # ---  Pod Anti-Affinity ---
-      # This ensures API replicas are distributed across the cluster.
-      # We use 'preferred' so it still works on your single-node Docker Desktop.
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -46,12 +43,15 @@ spec:
           requests: { cpu: "100m", memory: "256Mi" }
           limits: { cpu: "500m", memory: "512Mi" }
 
+        # ---  Cold Start Resilience ---
         readinessProbe:
           httpGet: { path: /health, port: 8000 }
-          initialDelaySeconds: 10
+          initialDelaySeconds: 40 # Increased from 10
+          periodSeconds: 10
         livenessProbe:
           httpGet: { path: /health, port: 8000 }
-          initialDelaySeconds: 15
+          initialDelaySeconds: 60 # Increased from 15
+          periodSeconds: 15
 
         envFrom:
         - configMapRef: { name: tomato-config }
