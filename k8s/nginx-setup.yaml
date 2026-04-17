@@ -8,33 +8,47 @@ data:
         worker_connections 1024; 
     }
     http {
-        resolver 10.96.0.10 valid=5s; # K8s Internal DNS
+        # K8s internal DNS resolver (Standard for most clusters)
+        resolver 10.96.0.10 valid=5s;
+        
+        # Rate Limiting: 10 requests per second per user IP
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 
+        # Note: We keep the upstream block for documentation, but use 
+        # the variable method below to prevent startup crashes.
         upstream tomato_backend {
-            least_conn; # Best for AI: Sends tasks to the least busy pod
+            least_conn; 
             server tomato-api-service.default.svc.cluster.local:8000;
         }
 
         server {
             listen 80;
-            client_max_body_size 10M; # Matches FastAPI MAX_FILE_SIZE
+            client_max_body_size 10M;
 
             location / {
+                # Protection against DDoS/Spam
                 limit_req zone=api_limit burst=20 nodelay;
-                proxy_pass http://tomato_backend; 
+
+                # ---  Lazy DNS Resolution ---
+                # Using a variable forces Nginx to resolve the IP at runtime.
+                # This prevents 'Exit Code 1' if the API service isn't ready at boot.
+                set $target tomato-api-service.default.svc.cluster.local;
+                proxy_pass http://$target:8000; 
                 
+                # Standard proxy headers
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 
-                # Resilience for AI Inference
+                # Resilience settings for AI Inference
                 proxy_next_upstream error timeout http_502 http_503 http_504;
                 proxy_connect_timeout 5s;
-                proxy_read_timeout 90s; # High timeout for deep learning tasks
+                proxy_read_timeout 90s;
             }
 
+            # Health check for Nginx itself
             location /healthz {
+                access_log off;
                 return 200 'OK';
             }
         }
@@ -58,23 +72,37 @@ spec:
       - name: nginx
         image: nginx:alpine
         resources:
-          requests: { cpu: "50m", memory: "64Mi" }
-          limits: { cpu: "100m", memory: "128Mi" }
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
         ports:
         - containerPort: 80
+        
+        #  Increased delays to prevent probe-cycling on Docker Desktop
         livenessProbe:
-          httpGet: { path: /healthz, port: 80 }
-          initialDelaySeconds: 5
+          httpGet:
+            path: /healthz
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 10
         readinessProbe:
-          httpGet: { path: /healthz, port: 80 }
-          initialDelaySeconds: 5
+          httpGet:
+            path: /healthz
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 5
+
         volumeMounts:
         - name: conf
           mountPath: /etc/nginx/nginx.conf
           subPath: nginx.conf
       volumes:
       - name: conf
-        configMap: { name: nginx-config }
+        configMap:
+          name: nginx-config
 ---
 apiVersion: v1
 kind: Service
