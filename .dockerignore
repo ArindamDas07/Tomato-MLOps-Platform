@@ -4,7 +4,7 @@
 
 # --- 1. Virtual Environments (CRITICAL) ---
 # Prevents local Windows/Mac packages from leaking into Linux containers
-tomato-env/
+tomato_env/
 venv/
 .venv/
 env/
