@@ -8,44 +8,29 @@ data:
         worker_connections 1024; 
     }
     http {
-        # K8s internal DNS resolver
         resolver 10.96.0.10 valid=5s;
-        
-        # Rate Limiting: 10 requests per second per user IP
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 
-        # --- THE UPSTREAM BLOCK ---
-        # This is required for the 'least_conn' algorithm to work with your 
-        # Headless API Service (clusterIP: None).
         upstream tomato_backend {
             least_conn; 
             server tomato-api-service.default.svc.cluster.local:8000;
         }
 
         server {
-            listen 80;
+            #  Port 8080 is required for non-root Nginx
+            listen 8080;
             client_max_body_size 10M;
 
             location / {
-                # Protection against DDoS/Spam
                 limit_req zone=api_limit burst=20 nodelay;
-
-                # --- PROXY TO UPSTREAM ---
-                # We point directly to the upstream group defined above.
                 proxy_pass http://tomato_backend; 
-                
-                # Standard proxy headers
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                
-                # Resilience settings for AI Inference
-                proxy_next_upstream error timeout http_502 http_503 http_504;
                 proxy_connect_timeout 10s;
                 proxy_read_timeout 90s;
             }
 
-            # Health check for Nginx itself
             location /healthz {
                 access_log off;
                 return 200 'OK';
@@ -67,53 +52,47 @@ spec:
       labels:
         app: nginx
     spec:
-      # --- DNS GUARD ---
-      # This InitContainer prevents Nginx from crashing if the API DNS 
-      # isn't ready immediately during a cold start.
+      # ---  Pod Level ---
+      securityContext:
+        runAsNonRoot: true
+
       initContainers:
       - name: wait-for-api-dns
         image: busybox:latest
+        #  Explicitly set user to 1000
+        securityContext:
+          runAsUser: 1000
         command: ['sh', '-c', 'until nslookup tomato-api-service.default.svc.cluster.local; do echo waiting for dns; sleep 2; done;']
 
       containers:
       - name: nginx
-        image: nginx:alpine
+        # Use the unprivileged image to allow runAsNonRoot: true
+        image: nginxinc/nginx-unprivileged:alpine
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsUser: 101 # Default UID for nginx-unprivileged
         resources:
-          requests:
-            cpu: "100m"
-            memory: "128Mi"
-          limits:
-            cpu: "200m"
-            memory: "256Mi"
+          requests: { cpu: "100m", memory: "128Mi" }
+          limits: { cpu: "200m", memory: "256Mi" }
         ports:
-        - containerPort: 80
-        
-        # Lenient Probes for Docker Desktop
+        - containerPort: 8080
         livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 80
+          # Updated to 8080
+          httpGet: { path: /healthz, port: 8080 }
           initialDelaySeconds: 20
           periodSeconds: 15
-          timeoutSeconds: 5
-          failureThreshold: 5
         readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 80
+          # Updated to 8080
+          httpGet: { path: /healthz, port: 8080 }
           initialDelaySeconds: 20
           periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-
         volumeMounts:
         - name: conf
           mountPath: /etc/nginx/nginx.conf
           subPath: nginx.conf
       volumes:
       - name: conf
-        configMap:
-          name: nginx-config
+        configMap: { name: nginx-config }
 ---
 apiVersion: v1
 kind: Service
@@ -123,6 +102,6 @@ spec:
   type: LoadBalancer 
   ports:
   - port: 80        
-    targetPort: 80
+    targetPort: 8080 # Points to the unprivileged port 8080
   selector:
     app: nginx

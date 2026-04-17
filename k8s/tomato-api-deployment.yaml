@@ -14,7 +14,6 @@ spec:
     spec:
       imagePullSecrets: [{name: github-auth}]
       
-      # ---HA: Pod Anti-Affinity ---
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -27,33 +26,29 @@ spec:
                   values: ["tomato-api"]
               topologyKey: "kubernetes.io/hostname"
 
-      # --- Dependency Management ---
-      # This ensures the API only starts once Redis is accepting connections.
-      # This prevents restarts and ensures the 'lifespan' startup logic succeeds.
-      initContainers:
-      - name: wait-for-redis
-        image: busybox:latest
-        command: ['sh', '-c', 'until nc -z redis 6379; do echo waiting for redis; sleep 2; done;']
-
+      # ---  Pod Level ---
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000
 
+      initContainers:
+      - name: wait-for-redis
+        image: busybox:latest
+        # Explicitly set user to 1000 to satisfy runAsNonRoot policy
+        securityContext:
+          runAsUser: 1000
+        command: ['sh', '-c', 'until nc -z redis 6379; do echo waiting for redis; sleep 2; done;']
+
       containers:
       - name: tomato-api
         image: ghcr.io/arindamdas07/tomato-mlops-platform-api:latest
-        
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true 
           runAsUser: 1000
-
         resources:
           requests: { cpu: "100m", memory: "256Mi" }
           limits: { cpu: "500m", memory: "512Mi" }
-
-        # ---  Tuned Probes ---
-        # Increased delays to account for Python interpreter and library initialization
         readinessProbe:
           httpGet: { path: /health, port: 8000 }
           initialDelaySeconds: 20 
@@ -62,18 +57,14 @@ spec:
           httpGet: { path: /health, port: 8000 }
           initialDelaySeconds: 30
           periodSeconds: 15
-
         envFrom:
         - configMapRef: { name: tomato-config }
         - secretRef: { name: tomato-secrets }
-            
         volumeMounts:
         - name: shared-uploads
           mountPath: /app/uploads
-        # Required for ReadOnlyRootFilesystem to allow temporary FastAPI/Python files
         - name: tmp-volume
           mountPath: /tmp
-      
       volumes:
       - name: shared-uploads
         persistentVolumeClaim: { claimName: tomato-upload-pvc }
