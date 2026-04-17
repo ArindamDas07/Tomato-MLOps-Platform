@@ -4,10 +4,21 @@ metadata:
   name: nginx-config
 data:
   nginx.conf: |
+    #  Must specify a writable PID file for non-root users
+    pid /tmp/nginx.pid;
+
     events { 
         worker_connections 1024; 
     }
+
     http {
+        #  Redirect all temporary paths to /tmp
+        client_body_temp_path /tmp/client_temp;
+        proxy_temp_path       /tmp/proxy_temp_path;
+        fastcgi_temp_path     /tmp/fastcgi_temp;
+        uwsgi_temp_path       /tmp/uwsgi_temp;
+        scgi_temp_path        /tmp/scgi_temp;
+
         resolver 10.96.0.10 valid=5s;
         limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 
@@ -17,7 +28,6 @@ data:
         }
 
         server {
-            #  Port 8080 is required for non-root Nginx
             listen 8080;
             client_max_body_size 10M;
 
@@ -52,37 +62,34 @@ spec:
       labels:
         app: nginx
     spec:
-      # ---  Pod Level ---
       securityContext:
         runAsNonRoot: true
+        fsGroup: 101
 
       initContainers:
       - name: wait-for-api-dns
         image: busybox:latest
-        #  Explicitly set user to 1000
         securityContext:
           runAsUser: 1000
         command: ['sh', '-c', 'until nslookup tomato-api-service.default.svc.cluster.local; do echo waiting for dns; sleep 2; done;']
 
       containers:
       - name: nginx
-        # Use the unprivileged image to allow runAsNonRoot: true
         image: nginxinc/nginx-unprivileged:alpine
         securityContext:
           allowPrivilegeEscalation: false
-          runAsUser: 101 # Default UID for nginx-unprivileged
+          readOnlyRootFilesystem: true # Hardened 'Iron Cage'
+          runAsUser: 101
         resources:
           requests: { cpu: "100m", memory: "128Mi" }
           limits: { cpu: "200m", memory: "256Mi" }
         ports:
         - containerPort: 8080
         livenessProbe:
-          # Updated to 8080
           httpGet: { path: /healthz, port: 8080 }
           initialDelaySeconds: 20
           periodSeconds: 15
         readinessProbe:
-          # Updated to 8080
           httpGet: { path: /healthz, port: 8080 }
           initialDelaySeconds: 20
           periodSeconds: 10
@@ -90,9 +97,15 @@ spec:
         - name: conf
           mountPath: /etc/nginx/nginx.conf
           subPath: nginx.conf
+        #  Mount /tmp as a writable volume for PID and buffers
+        - name: tmp-volume
+          mountPath: /tmp
       volumes:
       - name: conf
-        configMap: { name: nginx-config }
+        configMap:
+          name: nginx-config
+      - name: tmp-volume
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -102,6 +115,6 @@ spec:
   type: LoadBalancer 
   ports:
   - port: 80        
-    targetPort: 8080 # Points to the unprivileged port 8080
+    targetPort: 8080
   selector:
     app: nginx
