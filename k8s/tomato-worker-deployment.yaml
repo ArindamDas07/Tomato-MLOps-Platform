@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: tomato-worker
 spec:
-  replicas: 2 # Start with 2 for High Availability
+  replicas: 2 
   selector:
     matchLabels:
       app: tomato-worker
@@ -14,7 +14,9 @@ spec:
     spec:
       imagePullSecrets: [{name: github-auth}]
       
-      # Spread pods across nodes (Soft-limit for Docker Desktop)
+      # --- HA: Soft Anti-Affinity ---
+      # Encourages K8s to spread workers across nodes if available,
+      # but allows them to run on a single node (Docker Desktop).
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -48,21 +50,24 @@ spec:
         - configMapRef: { name: tomato-config }
         - secretRef: { name: tomato-secrets }
 
-        # --- THE HEALTH CHECK ---
+        # --- THE HEALTH CHECK (Targeted & Robust) ---
         livenessProbe:
           exec:
-            # We ping the specific worker instance to ensure the event loop isn't deadlocked
+            # -d celery@$HOSTNAME ensures we only ping THIS specific pod.
+            # This prevents cluster-wide broadcast timeouts.
             command: ["bash", "-c", "celery -A worker.celery_app inspect ping -d celery@$HOSTNAME"]
-          initialDelaySeconds: 45 # Give AI models time to load into RAM
+          initialDelaySeconds: 90 # Increased: Give AI models ample time to load
           periodSeconds: 60
-          timeoutSeconds: 10
+          timeoutSeconds: 15
 
         readinessProbe:
           exec:
-            # Ensure worker is actually joined to the cluster
-            command: ["bash", "-c", "celery -A worker.celery_app inspect active"]
-          initialDelaySeconds: 20
+            # We use 'ping' for readiness too. If the worker can respond to a ping,
+            # it is connected to Redis and ready to pull tasks from the queue.
+            command: ["bash", "-c", "celery -A worker.celery_app inspect ping -d celery@$HOSTNAME"]
+          initialDelaySeconds: 45 # Increased: Wait for Celery mingle/handshake
           periodSeconds: 30
+          timeoutSeconds: 10
 
         volumeMounts:
         - name: shared-uploads
