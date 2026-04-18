@@ -113,13 +113,17 @@ Strict Kubernetes NetworkPolicies enforce a "Least Privilege" communication mode
 
 ---
 
-## 🙏 Acknowledgements & Development Approach
+## 🧠 Development Approach & Learning Journey
 
-This project was developed using modern AI-assisted development tools, including Google AI Studio, for implementation support and rapid iteration.  
+This project represents a hands-on effort to understand and implement a production-grade MLOps system.
 
-The system architecture, Kubernetes orchestration, MLOps pipeline design, and overall integration were designed, implemented, and debugged by the author.  
+During development, I used multiple AI-assisted tools as architectural guides to explore patterns such as decoupled microservices, asynchronous processing, and task routing. These suggestions were not followed blindly; each design decision was reviewed and validated independently.
 
-This project reflects a hands-on effort to build and understand a production-grade distributed AI system from end to end.
+All components—from FastAPI/Pydantic schemas to Kubernetes orchestration—were cross-referenced with official documentation and external learning resources (YouTube, technical blogs). In several cases, I deliberately challenged and adjusted suggested approaches to ensure the system followed practical and reliable design patterns.
+
+While AI tools accelerated development, the debugging of local environments (WSL2/Docker Desktop), system integration, and end-to-end validation were performed independently.
+
+As a result, I have developed a clear understanding of the system and can explain the reasoning behind each architectural decision.
 
 ---
 
