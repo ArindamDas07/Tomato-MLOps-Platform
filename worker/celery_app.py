@@ -31,7 +31,7 @@ celery_app.conf.update(
     timezone='UTC',
     enable_utc=True,
     
-    # --- SENIOR RESILIENCE SETTINGS ---
+    # --- RESILIENCE SETTINGS ---
     broker_connection_retry_on_startup=True,
     broker_connection_max_retries=10,
 
