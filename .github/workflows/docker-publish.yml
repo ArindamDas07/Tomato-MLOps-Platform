@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # THE EMERGENCY FIX: STOP BANDWIDTH BLEED
+          
           # This ensures we skip the 500MB+ models on GitHub
           lfs: false 
 
@@ -52,7 +52,7 @@ jobs:
           context: .
           file: ./worker/Dockerfile.worker
           push: true
-          # --- THE SENIOR FIX: Pass the Secret into the Docker Build ---
+          # ---  Pass the Secret into the Docker Build ---
           # This allows the 'wget' command inside the Dockerfile to authenticate
           build-args: |
             HF_TOKEN=${{ secrets.HF_TOKEN }}
