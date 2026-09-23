@@ -80,7 +80,7 @@ jobs:
           context: .
           file: ./worker/Dockerfile.worker
           push: true
-          # --- THE SENIOR FIX: Pass the Secret into the Docker Build ---
+          # --- Pass the Secret into the Docker Build ---
           build-args: |
             HF_TOKEN=${{ secrets.HF_TOKEN }}
           tags: |
