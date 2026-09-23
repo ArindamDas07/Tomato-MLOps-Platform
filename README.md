@@ -37,7 +37,7 @@ The entry point is a hardened Unprivileged Nginx Reverse Proxy optimized for AI 
 #### Two-Stage Staged Inference:
 
 - Stage 1 (Gatekeeper): A lightweight MobileNetV2 validates if the image is a tomato leaf.
-- Stage 2 (Classifier): Heavy models (ResNet50/EfficientNet) only run on valid data, reducing unnecessary inference on invalid inputs (~60%).
+- Stage 2 (Classifier): Heavy models (ResNet50/EfficientNet) only run on valid data, reducing unnecessary inference on invalid inputs.
 
 #### Deterministic A/B Testing:
 
