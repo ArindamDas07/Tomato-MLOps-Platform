@@ -27,6 +27,30 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ---
 # --- 2. STORAGE (The Persistence Layer) ---
+
+# Prometheus persistent storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Grafana persistent storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 512Mi
+---
+# Pushgateway persistent storage
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -34,7 +58,8 @@ metadata:
 spec:
   accessModes: [ReadWriteOnce]
   resources:
-    requests: { storage: 512Mi }
+    requests:
+      storage: 512Mi
 ---
 # --- 3. PROMETHEUS (StatefulSet) ---
 apiVersion: apps/v1
@@ -68,7 +93,7 @@ spec:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
             - "--storage.tsdb.retention.time=15d"
-            - "--web.enable-lifecycle" # Allows reloading config without restart
+            - "--web.enable-lifecycle"
           ports: [{ containerPort: 9090 }]
           volumeMounts:
             - name: config
@@ -87,7 +112,7 @@ kind: Service
 metadata:
   name: prometheus-service
 spec:
-  type: LoadBalancer 
+  type: LoadBalancer
   ports:
     - port: 9090
       targetPort: 9090
@@ -107,7 +132,6 @@ spec:
     metadata:
       labels: { app: pushgateway }
     spec:
-      #  Ensure Pushgateway can write its persistence file
       initContainers:
       - name: fix-permissions
         image: busybox:latest
@@ -118,9 +142,9 @@ spec:
       containers:
         - name: pushgateway
           image: prom/pushgateway:v1.7.0
-          args: 
+          args:
             - "--persistence.file=/data/metrics.file"
-            - "--persistence.interval=5m" # Saves RAM to Disk every 5 mins
+            - "--persistence.interval=5m"
           ports: [{ containerPort: 9091 }]
           volumeMounts:
           - name: push-data
