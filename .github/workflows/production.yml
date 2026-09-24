@@ -69,8 +69,8 @@ jobs:
           file: ./api/Dockerfile.api
           push: true
           tags: |
-            ghcr.io/${{ env.IMAGE_OWNER }}/tomato-api:latest
-            ghcr.io/${{ env.IMAGE_OWNER }}/tomato-api:${{ github.sha }}
+            ghcr.io/${{ env.IMAGE_OWNER }}/tomato-mlops-platform-api:latest
+            ghcr.io/${{ env.IMAGE_OWNER }}/tomato-mlops-platform-api:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -80,11 +80,11 @@ jobs:
           context: .
           file: ./worker/Dockerfile.worker
           push: true
-          # --- THE SENIOR FIX: Pass the Secret into the Docker Build ---
+          # --- Pass the Secret into the Docker Build ---
           build-args: |
             HF_TOKEN=${{ secrets.HF_TOKEN }}
           tags: |
-            ghcr.io/${{ env.IMAGE_OWNER }}/tomato-worker:latest
-            ghcr.io/${{ env.IMAGE_OWNER }}/tomato-worker:${{ github.sha }}
+            ghcr.io/${{ env.IMAGE_OWNER }}/tomato-mlops-platform-worker:latest
+            ghcr.io/${{ env.IMAGE_OWNER }}/tomato-mlops-platform-worker:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

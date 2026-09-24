@@ -19,7 +19,7 @@ TRAINING_BASELINES = {
 def get_raw_array(image_path: str):
     """
     Safely decodes an image. 
-    Senior Tip: Always catch UnidentifiedImageError for user uploads.
+    Always catch UnidentifiedImageError for user uploads.
     """
     try:
         # We use a context manager to ensure the file handle is closed

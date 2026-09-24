@@ -45,7 +45,7 @@ def update_drift(drift_result: dict):
 
 def push_metrics(worker_name: str):
     """
-    Senior Move: Non-blocking telemetry.
+    Non-blocking telemetry.
     In an auto-scaled environment, the Pushgateway might be under load.
     We set a 3-second timeout so the AI worker never hangs.
     """
