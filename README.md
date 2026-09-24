@@ -1,6 +1,5 @@
 # 🍅 Tomato Leaf AI: Production-Grade MLOps Platform
 
-
 End-to-end MLOps system for real-time tomato leaf disease detection using a distributed, asynchronous Kubernetes architecture.  
 This project demonstrates the transition from a standalone model to a scalable inference system featuring background task processing, deterministic model routing, and real-time environmental drift observability.  
 

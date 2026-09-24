@@ -3,8 +3,8 @@ import redis
 from redis.backoff import ExponentialBackoff
 from redis.retry import Retry
 from redis.exceptions import (
-    BusyLoadingError, 
-    ConnectionError, 
+    BusyLoadingError,
+    ConnectionError,
     TimeoutError
 )
 from loguru import logger
@@ -12,11 +12,11 @@ from loguru import logger
 def get_redis_client() -> redis.Redis:
     """
     Initializes a Redis connection pool with built-in resilience.
-    
-     1: We do NOT ping here. This allows the module to be 
+
+     Move 1: We do NOT ping here. This allows the module to be
     imported during testing or CI/CD without a live database.
-    
-     2: Exponential Backoff Retry. Handles transient network
+
+    Move 2: Exponential Backoff Retry. Handles transient network
     blips or container restarts automatically.
     """
     host = os.getenv("REDIS_HOST", "redis")

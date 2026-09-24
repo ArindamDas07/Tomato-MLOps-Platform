@@ -4,7 +4,7 @@ from worker.utils import calculate_drift, TRAINING_BASELINES
 
 def test_calculate_drift_math():
     """
-    : Proves that the drift percentage formula is correct.
+     Proves that the drift percentage formula is correct.
     Using float32 dummy image so pixels can match the baseline (116.536) exactly.
     """
     baseline_val = TRAINING_BASELINES["brightness"]
